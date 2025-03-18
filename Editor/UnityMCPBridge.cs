@@ -21,9 +21,35 @@ public static partial class UnityMCPBridge
     private static readonly int unityPort = 6400;  // Hardcoded port
     private static readonly int mcpPort = 6500;    // MCP port for forwarding commands
     private static bool lastConnectionState = false; // For logging connection state changes only
+    
+    // Simulated response storage
+    private static Dictionary<string, string> simulatedResponses = new Dictionary<string, string>();
 
     // Add public property to expose running state
     public static bool IsRunning => isRunning;
+    
+    // Simulated response handling
+    public static bool HasSimulatedResponse(string messageId)
+    {
+        return simulatedResponses.ContainsKey(messageId);
+    }
+    
+    public static string GetSimulatedResponse(string messageId)
+    {
+        if (simulatedResponses.TryGetValue(messageId, out string response))
+        {
+            return response;
+        }
+        return null;
+    }
+    
+    public static void RemoveSimulatedResponse(string messageId)
+    {
+        if (simulatedResponses.ContainsKey(messageId))
+        {
+            simulatedResponses.Remove(messageId);
+        }
+    }
 
     // Add method to check existence of a folder
     public static bool FolderExists(string path)
@@ -343,8 +369,17 @@ public static partial class UnityMCPBridge
             
             string commandJson = JsonConvert.SerializeObject(command);
             
-            // Rather than forwarding to MCP server directly, we'll simulate a response
-            // since it appears the MCP server listening on port 6500 may not be running properly
+            // Extract message ID if present for simulated responses
+            string messageId = null;
+            if (parameters != null && parameters["messageId"] != null)
+            {
+                messageId = parameters["messageId"].ToString();
+            }
+            else
+            {
+                // Generate a random ID if none provided
+                messageId = Guid.NewGuid().ToString();
+            }
             
             // Response simulation for different command types
             if (commandType == "process_user_request")
@@ -368,7 +403,15 @@ public static partial class UnityMCPBridge
                     }
                 };
                 
-                return JsonConvert.SerializeObject(simulatedResponse);
+                string responseJson = JsonConvert.SerializeObject(simulatedResponse);
+                
+                // Store the response for later retrieval by the UI
+                if (!string.IsNullOrEmpty(messageId))
+                {
+                    simulatedResponses[messageId] = responseJson;
+                }
+                
+                return responseJson;
             }
             
             // For other commands, return a generic success response
@@ -471,6 +514,13 @@ public static partial class UnityMCPBridge
             {
                 try
                 {
+                    // Extract the message ID if present
+                    string messageId = null;
+                    if (parameters != null && parameters["messageId"] != null)
+                    {
+                        messageId = parameters["messageId"].ToString();
+                    }
+                    
                     // Mark that we're processing the request immediately
                     var processingResponse = new
                     {
