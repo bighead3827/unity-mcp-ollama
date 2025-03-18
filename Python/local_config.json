@@ -4,7 +4,7 @@
   "mcp_port": 6500,
   "connection_timeout": 15.0,
   "buffer_size": 32768,
-  "log_level": "INFO",
+  "log_level": "DEBUG",
   "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
   "max_retries": 3,
   "retry_delay": 1.0,
