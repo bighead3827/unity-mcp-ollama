@@ -381,6 +381,38 @@ public static partial class UnityMCPBridge
                 messageId = Guid.NewGuid().ToString();
             }
             
+            // 実際のMCPサーバー接続コード
+            using (var client = new TcpClient())
+            {
+                // Try to connect to MCP server
+                var connectTask = client.ConnectAsync("localhost", mcpPort);
+                if (await Task.WhenAny(connectTask, Task.Delay(5000)) != connectTask)
+                {
+                    throw new TimeoutException("Connection to MCP server timed out");
+                }
+
+                using (var stream = client.GetStream())
+                {
+                    // Send the command
+                    byte[] commandBytes = System.Text.Encoding.UTF8.GetBytes(commandJson);
+                    await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
+                    
+                    // Read response
+                    byte[] buffer = new byte[32768]; // Large buffer
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                    string response = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                    
+                    // Store the response for later retrieval by the UI
+                    if (!string.IsNullOrEmpty(messageId))
+                    {
+                        simulatedResponses[messageId] = response;
+                    }
+                    
+                    return response;
+                }
+            }
+            
+            /* シミュレーション応答コード (コメントアウト)
             // Response simulation for different command types
             if (commandType == "process_user_request")
             {
@@ -426,35 +458,6 @@ public static partial class UnityMCPBridge
             };
             
             return JsonConvert.SerializeObject(genericResponse);
-            
-            // The original implementation is commented out below
-            // When the MCP server is properly configured to listen on port 6500,
-            // this code can be uncommented and the simulation code above removed
-            
-            /*
-            using (var client = new TcpClient())
-            {
-                // Try to connect to MCP server
-                var connectTask = client.ConnectAsync("localhost", mcpPort);
-                if (await Task.WhenAny(connectTask, Task.Delay(5000)) != connectTask)
-                {
-                    throw new TimeoutException("Connection to MCP server timed out");
-                }
-
-                using (var stream = client.GetStream())
-                {
-                    // Send the command
-                    byte[] commandBytes = System.Text.Encoding.UTF8.GetBytes(commandJson);
-                    await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
-                    
-                    // Read response
-                    byte[] buffer = new byte[32768]; // Large buffer
-                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                    string response = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    
-                    return response;
-                }
-            }
             */
         }
         catch (Exception ex)
@@ -580,49 +583,19 @@ public static partial class UnityMCPBridge
             // Handle get_ollama_status command - forward to Python MCP server
             if (commandType == "get_ollama_status")
             {
-                // Temporary solution - fake a successful status response
-                // In a real implementation, this should forward to the Python server
-                var statusResponse = new
-                {
-                    status = "success",
-                    result = new
-                    {
-                        status = "connected",
-                        model = "gemma3:12b", 
-                        host = "localhost",
-                        port = 11434
-                    }
-                };
-                return JsonConvert.SerializeObject(statusResponse);
+                // 実際にPythonサーバーに転送
+                Task<string> forwardTask = ForwardToMCPServer("get_ollama_status", parameters);
+                forwardTask.Wait(); // 同期的に待機
+                return forwardTask.Result;
             }
             
             // Handle configure_ollama command - forward to Python MCP server
             if (commandType == "configure_ollama")
             {
-                // Temporary solution - fake a successful config response
-                // In a real implementation, this should forward to the Python server
-                string host = parameters?["host"]?.ToString() ?? "localhost";
-                int port = parameters?["port"]?.ToObject<int>() ?? 11434;
-                string model = parameters?["model"]?.ToString() ?? "gemma3:12b";
-                float temperature = parameters?["temperature"]?.ToObject<float>() ?? 0.7f;
-                
-                var configResponse = new
-                {
-                    status = "success",
-                    result = new
-                    {
-                        status = "connected",
-                        message = "Ollama configuration updated successfully",
-                        config = new
-                        {
-                            host = host,
-                            port = port,
-                            model = model,
-                            temperature = temperature
-                        }
-                    }
-                };
-                return JsonConvert.SerializeObject(configResponse);
+                // 実際にPythonサーバーに転送
+                Task<string> forwardTask = ForwardToMCPServer("configure_ollama", parameters);
+                forwardTask.Wait(); // 同期的に待機
+                return forwardTask.Result;
             }
 
             // For other commands - use original placeholder implementation
