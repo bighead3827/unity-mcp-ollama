@@ -92,10 +92,55 @@
   - ソケット通信コードの改善
   - コマンド処理の簡素化
 
-## 次のステップ
-1. 様々なLLMモデルとのテスト実施
-2. エラーハンドリングの強化
-3. パフォーマンス最適化
+## 実装方法（アセットとして使用）
+
+パッケージマネージャーでの互換性問題を回避するために、アセットとして直接プロジェクトに組み込む方法を採用しました。
+
+### 実装手順
+
+1. **リポジトリをクローン**:
+   ```
+   git clone https://github.com/ZundamonnoVRChatkaisetu/unity-mcp-ollama.git
+   ```
+
+2. **Editorファイルをコピー**:
+   リポジトリの`Editor`フォルダを`Assets/UnityMCPOllama/Editor`にコピーします。
+   ```
+   # Unity プロジェクト内にフォルダを作成
+   mkdir -p Assets/UnityMCPOllama
+   
+   # Editorフォルダをコピー
+   cp -r unity-mcp-ollama/Editor Assets/UnityMCPOllama/
+   ```
+
+3. **Python環境のセットアップ**:
+   プロジェクト外の安全な場所にPython環境を構築します。
+   ```
+   mkdir -p PythonMCP
+   cd PythonMCP
+   
+   # リポジトリのPythonフォルダをコピー
+   cp -r ../unity-mcp-ollama/Python .
+   
+   # 仮想環境を作成
+   python -m venv venv
+   
+   # 仮想環境を有効化
+   # Windowsの場合:
+   venv\Scripts\activate
+   # macOS/Linuxの場合:
+   source venv/bin/activate
+   
+   # 依存関係をインストール
+   cd Python
+   pip install -e .
+   ```
+
+### 確認事項
+
+- Unity内で「Window > Unity MCP」メニューが表示されることを確認
+- Ollamaが正しくインストールされ、対応モデルがダウンロードされていることを確認
+- Python環境が正しく設定されていることを確認
 
 ## 参考リソース
 - [元リポジトリ](https://github.com/justinpbarnett/unity-mcp)
