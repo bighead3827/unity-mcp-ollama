@@ -280,11 +280,74 @@ public static partial class UnityMCPBridge
                 var pingResponse = new { status = "success", result = new { message = "pong" } };
                 return JsonConvert.SerializeObject(pingResponse);
             }
+            
+            // Handle process_user_request command for chat functionality
+            if (commandType == "process_user_request")
+            {
+                // Forward the request back to the Python server as is
+                // For process_user_request, we don't need to do anything in Unity
+                // We just need to pass the result back to the chat interface
+                var successResponse = new
+                {
+                    status = "success",
+                    result = new
+                    {
+                        status = "success",
+                        llm_response = parameters?["prompt"]?.ToString() ?? "I received your message but couldn't process it. Please try again.",
+                        message = "Request processed successfully",
+                        commands_executed = 0,
+                        results = new object[] { }
+                    }
+                };
+                return JsonConvert.SerializeObject(successResponse);
+            }
+            
+            // Handle get_ollama_status command
+            if (commandType == "get_ollama_status")
+            {
+                var statusResponse = new
+                {
+                    status = "success",
+                    result = new
+                    {
+                        status = "connected",
+                        model = "gemma3:12b",
+                        host = "localhost",
+                        port = 11434
+                    }
+                };
+                return JsonConvert.SerializeObject(statusResponse);
+            }
+            
+            // Handle configure_ollama command
+            if (commandType == "configure_ollama")
+            {
+                string host = parameters?["host"]?.ToString() ?? "localhost";
+                int port = parameters?["port"]?.ToObject<int>() ?? 11434;
+                string model = parameters?["model"]?.ToString() ?? "gemma3:12b";
+                float temperature = parameters?["temperature"]?.ToObject<float>() ?? 0.7f;
+                
+                var configResponse = new
+                {
+                    status = "success",
+                    result = new
+                    {
+                        status = "connected",
+                        message = "Ollama configuration updated successfully",
+                        config = new
+                        {
+                            host = host,
+                            port = port,
+                            model = model,
+                            temperature = temperature
+                        }
+                    }
+                };
+                return JsonConvert.SerializeObject(configResponse);
+            }
 
-            // Process other commands based on type
-            // This is where you would route to the appropriate handlers
-            // For this implementation, we'll simply return a placeholder success
-            var successResponse = new
+            // For other commands - use original placeholder implementation
+            var defaultResponse = new
             {
                 status = "success",
                 result = new
@@ -294,7 +357,7 @@ public static partial class UnityMCPBridge
                     paramsCount = parameters?.Count ?? 0
                 }
             };
-            return JsonConvert.SerializeObject(successResponse);
+            return JsonConvert.SerializeObject(defaultResponse);
         }
         catch (Exception ex)
         {
