@@ -15,6 +15,7 @@
   - 接続処理の修正済み
   - チャットインターフェース追加済み
 - インストールとセットアップ手順の詳細化完了
+- 設定ファイルの問題修正（デフォルトモデルをgemma3:12bに変更）
 
 ## 実装すべき機能
 1. ✅ リポジトリ作成
@@ -29,13 +30,15 @@
    - ✅ チャットインターフェース追加
 5. ✅ インストールとセットアップ手順の詳細化
 6. ⬜ テスト実施とバグ修正
+   - ✅ チャットエラー「Error: Command process_user_request was received」の修正
+   - ⬜ その他のバグテストと修正
 
 ## 優先度の高いタスク
 1. ✅ Python側のOllama連携コードの実装
 2. ✅ MCP対応レスポンスフォーマットの実装
 3. ✅ Unityパッケージの設定画面修正
-4. ⬜ 様々なLLMモデルの互換性テスト
-5. ⬜ エラーハンドリングの強化
+4. ✅ gemma3:12bとdeepseek-r:14bモデルとの連携テスト
+5. ⬜ その他のエラーハンドリングの強化
 
 ## 今後の課題
 - 様々なLLMモデルとの互換性テスト
@@ -60,6 +63,9 @@
   - `package.json`: パッケージ情報の更新
 - ドキュメントの更新
   - 詳細なセットアップと使用手順を`README.md`に追加
+- バグ修正
+  - Ollama連携エラー「Model llama3 not found in Ollama」を解決
+  - `local_config.json`を追加して使用モデルを`gemma3:12b`に変更
 
 ## 実装詳細
 ### Ollamaとの連携
@@ -71,9 +77,10 @@
 ### 設定機能の拡張
 - `config.py`ファイルにOllama固有の設定を追加:
   - ホスト/ポート設定
-  - 使用モデル設定（`deepseek-r1:14b`と`gemma3:12b`に対応）
+  - 使用モデル設定（`deepseek-r:14b`と`gemma3:12b`に対応）
   - システムプロンプト設定
   - 温度パラメータなど
+- `local_config.json`を追加し、デフォルトモデルを`gemma3:12b`に変更
 
 ### サーバー機能の拡張
 - `server.py`を更新して以下の機能を追加:
@@ -85,7 +92,7 @@
 ### Unity側の改修
 - `MCPEditorWindow.cs`:
   - Ollamaの設定UI
-  - モデル選択インターフェース（`deepseek-r1:14b`と`gemma3:12b`）
+  - モデル選択インターフェース（`deepseek-r:14b`と`gemma3:12b`）
   - チャットインターフェース
   - 状態表示の改善
 - `UnityMCPBridge.cs`:
@@ -127,7 +134,7 @@
    
    # 仮想環境を有効化
    # Windowsの場合:
-   venv\Scripts\activate
+   venv\\Scripts\\activate
    # macOS/Linuxの場合:
    source venv/bin/activate
    
@@ -141,6 +148,7 @@
 - Unity内で「Window > Unity MCP」メニューが表示されることを確認
 - Ollamaが正しくインストールされ、対応モデルがダウンロードされていることを確認
 - Python環境が正しく設定されていることを確認
+- サーバー起動時に、正しいモデル（`gemma3:12b`または`deepseek-r:14b`）が認識されていることを確認
 
 ## 参考リソース
 - [元リポジトリ](https://github.com/justinpbarnett/unity-mcp)
