@@ -100,13 +100,14 @@ public class MCPEditorWindow : EditorWindow
     private const int mcpPort = 6500;    // Hardcoded MCP port
     private const float CONNECTION_CHECK_INTERVAL = 2f; // Check every 2 seconds
     private float lastCheckTime = 0f;
+    private bool isPythonServerConnected = false;
 
     // Ollama configuration
     private string ollamaHost = "localhost";
     private int ollamaPort = 11434;
     private string ollamaModel = "gemma3:12b";
     private float ollamaTemperature = 0.7f;
-    private string[] availableModels = new string[] { "deepseek-r1:14b", "gemma3:12b" };
+    private string[] availableModels = new string[] { "deepseek-r:14b", "gemma3:12b" };
     private int selectedModelIndex = 1; // Default to gemma3:12b
 
     // Chat interface
@@ -156,65 +157,29 @@ public class MCPEditorWindow : EditorWindow
 
     private async void CheckPythonServerConnection()
     {
-        try
+        bool wasConnected = isPythonServerConnected;
+        isPythonServerConnected = await UnityMCPBridge.CheckPythonServerConnection();
+        
+        // Only update UI if connection state changed
+        if (isPythonServerConnected != wasConnected)
         {
-            using (var client = new TcpClient())
+            if (isPythonServerConnected)
             {
-                // Try to connect with a short timeout
-                var connectTask = client.ConnectAsync("localhost", unityPort);
-                if (await Task.WhenAny(connectTask, Task.Delay(1000)) == connectTask)
-                {
-                    // Try to send a ping message to verify connection is alive
-                    try
-                    {
-                        NetworkStream stream = client.GetStream();
-                        byte[] pingMessage = Encoding.UTF8.GetBytes("ping");
-                        await stream.WriteAsync(pingMessage, 0, pingMessage.Length);
-
-                        // Wait for response with timeout
-                        byte[] buffer = new byte[1024];
-                        var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-                        if (await Task.WhenAny(readTask, Task.Delay(1000)) == readTask)
-                        {
-                            // Connection successful and responsive
-                            pythonServerStatus = "Connected";
-                            pythonServerStatusColor = Color.green;
-                            UnityEngine.Debug.Log($"Python server connected successfully on port {unityPort}");
-                            
-                            // Check Ollama status
-                            CheckOllamaStatus();
-                        }
-                        else
-                        {
-                            // No response received
-                            pythonServerStatus = "No Response";
-                            pythonServerStatusColor = Color.yellow;
-                            UnityEngine.Debug.LogWarning($"Python server not responding on port {unityPort}");
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        // Connection established but communication failed
-                        pythonServerStatus = "Communication Error";
-                        pythonServerStatusColor = Color.yellow;
-                        UnityEngine.Debug.LogWarning($"Error communicating with Python server: {e.Message}");
-                    }
-                }
-                else
-                {
-                    // Connection failed
-                    pythonServerStatus = "Not Connected";
-                    pythonServerStatusColor = Color.red;
-                    UnityEngine.Debug.LogWarning($"Python server is not running or not accessible on port {unityPort}");
-                }
-                client.Close();
+                pythonServerStatus = "Connected";
+                pythonServerStatusColor = Color.green;
+                
+                // Check Ollama status if we just connected
+                CheckOllamaStatus();
             }
-        }
-        catch (Exception e)
-        {
-            pythonServerStatus = "Connection Error";
-            pythonServerStatusColor = Color.red;
-            UnityEngine.Debug.LogError($"Error checking Python server connection: {e.Message}");
+            else
+            {
+                pythonServerStatus = "Not Connected";
+                pythonServerStatusColor = Color.red;
+                ollamaStatusMessage = "Not connected";
+            }
+            
+            // Force UI update
+            Repaint();
         }
     }
 
@@ -579,7 +544,8 @@ public class MCPEditorWindow : EditorWindow
             string commandJson = JsonConvert.SerializeObject(command);
             
             // Show "thinking" message
-            chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Thinking..." });
+            int thinkingIndex = chatHistory.Count;
+            chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Processing your request..." });
             
             // Send command to Python server
             string response = await SendCommandToPythonServer(commandJson);
@@ -601,14 +567,26 @@ public class MCPEditorWindow : EditorWindow
                         }
                         
                         // Update the last message (replace "Thinking..." with the actual response)
-                        chatHistory.RemoveAt(chatHistory.Count - 1);
-                        chatHistory.Add(new ChatMessage { sender = "Assistant", content = llmResponse });
+                        if (thinkingIndex < chatHistory.Count)
+                        {
+                            chatHistory[thinkingIndex] = new ChatMessage { sender = "Assistant", content = llmResponse };
+                        }
+                        else
+                        {
+                            chatHistory.Add(new ChatMessage { sender = "Assistant", content = llmResponse });
+                        }
                     }
                     else if (resultDict.TryGetValue("message", out object messageObj))
                     {
                         // Update the last message (replace "Thinking..." with the error message)
-                        chatHistory.RemoveAt(chatHistory.Count - 1);
-                        chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error: " + messageObj.ToString() });
+                        if (thinkingIndex < chatHistory.Count)
+                        {
+                            chatHistory[thinkingIndex] = new ChatMessage { sender = "Assistant", content = "Error: " + messageObj.ToString() };
+                        }
+                        else
+                        {
+                            chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error: " + messageObj.ToString() });
+                        }
                     }
                 }
             }
@@ -617,18 +595,26 @@ public class MCPEditorWindow : EditorWindow
                 UnityEngine.Debug.LogError($"Error parsing chat response: {ex.Message}");
                 
                 // Update the last message (replace "Thinking..." with the error message)
-                chatHistory.RemoveAt(chatHistory.Count - 1);
-                chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error processing your request. Please try again." });
+                if (thinkingIndex < chatHistory.Count)
+                {
+                    chatHistory[thinkingIndex] = new ChatMessage { sender = "Assistant", content = "Error processing your request. Please try again." };
+                }
+                else
+                {
+                    chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error processing your request. Please try again." });
+                }
             }
         }
         catch (Exception e)
         {
             UnityEngine.Debug.LogError($"Error sending chat message: {e.Message}");
             
-            // Update the last message (replace "Thinking..." with the error message)
-            chatHistory.RemoveAt(chatHistory.Count - 1);
+            // Add error message to chat history
             chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error: Could not connect to the server. Please check your connection." });
         }
+        
+        // Force UI update
+        Repaint();
     }
 }
 
@@ -673,7 +659,7 @@ public class ManualConfigWindow : EditorWindow
 
         EditorGUILayout.LabelField("1. Ensure Ollama is installed and running", EditorStyles.wordWrappedLabel);
         EditorGUILayout.LabelField("2. Pull one of the supported models:", EditorStyles.wordWrappedLabel);
-        EditorGUILayout.LabelField("   - deepseek-r1:14b", EditorStyles.wordWrappedLabel);
+        EditorGUILayout.LabelField("   - deepseek-r:14b", EditorStyles.wordWrappedLabel);
         EditorGUILayout.LabelField("   - gemma3:12b", EditorStyles.wordWrappedLabel);
         EditorGUILayout.Space(5);
 
