@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "displayName": "Unity MCP with Ollama",
   "description": "A Unity package to communicate with Ollama local LLMs via a Python MCP server.",
-  "unity": "2022.3.22f1",
+  "unity": "2022.3",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.0.2"
   },
