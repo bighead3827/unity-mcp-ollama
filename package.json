@@ -1,0 +1,21 @@
+{
+  "name": "com.zundamonnovrchat.unity-mcp-ollama",
+  "version": "0.1.0",
+  "displayName": "Unity MCP with Ollama",
+  "description": "A Unity package to communicate with Ollama local LLMs via a Python MCP server.",
+  "unity": "2020.3",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.0.2"
+  },
+  "author": {
+    "name": "ZundamonnoVRChatkaisetu",
+    "url": "https://github.com/ZundamonnoVRChatkaisetu"
+  },
+  "keywords": [
+    "unity",
+    "mcp",
+    "ollama",
+    "llm",
+    "ai"
+  ]
+}

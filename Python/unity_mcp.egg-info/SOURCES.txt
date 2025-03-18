@@ -1,0 +1,16 @@
+config.py
+pyproject.toml
+server.py
+unity_connection.py
+tools/__init__.py
+tools/asset_tools.py
+tools/editor_tools.py
+tools/material_tools.py
+tools/object_tools.py
+tools/scene_tools.py
+tools/script_tools.py
+unity_mcp.egg-info/PKG-INFO
+unity_mcp.egg-info/SOURCES.txt
+unity_mcp.egg-info/dependency_links.txt
+unity_mcp.egg-info/requires.txt
+unity_mcp.egg-info/top_level.txt

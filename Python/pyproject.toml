@@ -1,0 +1,21 @@
+[project]
+name = "unity-mcp"
+version = "0.1.0"
+description = "Unity MCP Server: A Unity package for Unity Editor integration via the Model Context Protocol (MCP)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.28.1",
+  "mcp[cli]>=1.4.1"
+]
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# These are the single-file modules at the root of the Python folder.
+py-modules = ["config", "server", "unity_connection"]
+
+# The "tools" subdirectory is a package.
+packages = ["tools"]
