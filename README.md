@@ -29,7 +29,9 @@ This implementation is specifically configured to work with the following Ollama
 
 You can easily switch between these models in the Unity MCP window.
 
-## Installation
+## Installation (Asset Method)
+
+Due to Unity's package manager compatibility issues, we recommend using the **Asset Method** for installation.
 
 ### Prerequisites
 
@@ -40,29 +42,65 @@ You can easily switch between these models in the Unity MCP window.
   - `ollama pull deepseek-r1:14b`
   - `ollama pull gemma3:12b`
 
-### Step 1: Install the Unity Package
+### Step 1: Download and Install Editor Scripts
 
-- Open Unity Package Manager (`Window > Package Manager`)
-- Click the `+` button and select `Add package from git URL`
-- Enter: `https://github.com/ZundamonnoVRChatkaisetu/unity-mcp-ollama.git`
+1. Download or clone this repository:
+   ```
+   git clone https://github.com/ZundamonnoVRChatkaisetu/unity-mcp-ollama.git
+   ```
+
+2. Create a folder in your Unity project's Assets directory:
+   ```
+   Assets/UnityMCPOllama
+   ```
+
+3. Copy the `Editor` folder from the cloned repository to your Unity project:
+   ```
+   # Copy the entire Editor folder
+   [Repository]/Editor → Assets/UnityMCPOllama/Editor
+   ```
+
+4. Verify the folder structure is correct:
+   ```
+   Assets/
+     UnityMCPOllama/
+       Editor/
+         MCPEditorWindow.cs
+         UnityMCPBridge.cs
+   ```
+
+5. Let Unity import and compile the scripts
 
 ### Step 2: Set Up Python Environment
 
-- Navigate to the Python directory in your project
-- Install dependencies:
-  ```bash
-  # Create a virtual environment
-  python -m venv venv
-  
-  # Activate the virtual environment
-  # On Windows:
-  venv\Scripts\activate
-  # On macOS/Linux:
-  source venv/bin/activate
-  
-  # Install dependencies
-  pip install -e .
-  ```
+1. Create a folder for the Python environment (outside your Unity project):
+   ```
+   mkdir PythonMCP
+   cd PythonMCP
+   ```
+
+2. Copy the Python folder from the cloned repository:
+   ```
+   cp -r [Repository]/Python .
+   ```
+
+3. Create and activate a virtual environment:
+   ```bash
+   # Create a virtual environment
+   python -m venv venv
+   
+   # Activate the virtual environment
+   # On Windows:
+   venv\Scripts\activate
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
+
+4. Install dependencies:
+   ```bash
+   cd Python
+   pip install -e .
+   ```
 
 ### Step 3: Configure Ollama
 
@@ -79,74 +117,128 @@ You can easily switch between these models in the Unity MCP window.
 
 ## Using Unity MCP with Ollama
 
-### Configuration
+### Step 1: Start Unity Bridge
 
-1. Open the Unity MCP window (`Window > Unity MCP`)
-2. In the "Ollama Configuration" section:
-   - Verify/set the Host (default: localhost)
-   - Verify/set the Port (default: 11434)
-   - Select your desired model (deepseek-r1:14b or gemma3:12b)
-   - Adjust the temperature setting if needed (0.0-1.0)
-   - Click "Apply Ollama Configuration"
+1. Open your Unity project
+2. Navigate to `Window > Unity MCP` to open the MCP window
+3. Click the **Start Bridge** button to start the Unity bridge
 
-3. Start the Unity MCP Bridge by clicking "Start Bridge"
-4. Start the Python server from the command line:
+### Step 2: Start Python Server
+
+1. Open a command prompt or terminal
+2. Navigate to your Python environment:
    ```bash
-   # Navigate to the Python directory in your project
-   cd path/to/Python
-   
-   # Activate the virtual environment
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   
-   # Start the server
+   cd PythonMCP
+   ```
+3. Activate the virtual environment:
+   ```bash
+   # On Windows:
+   venv\Scripts\activate
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
+4. Navigate to the Python directory and start the server:
+   ```bash
+   cd Python
    python server.py
    ```
 
-### Chat Interface
+### Step 3: Configure Ollama Settings
 
-The Unity MCP window includes a built-in chat interface to interact with your local LLM:
+1. In the Unity MCP window, locate the **Ollama Configuration** section
+2. Verify or update the following settings:
+   - **Host**: localhost (default)
+   - **Port**: 11434 (default)
+   - **Model**: Select either `deepseek-r1:14b` or `gemma3:12b`
+   - **Temperature**: Adjust as needed (0.0-1.0)
+3. Click **Apply Ollama Configuration**
 
-1. Click "Show Chat Interface" to expand the chat panel
-2. Type your instructions in the message box
-3. Click "Send" to process your request
+### Step 4: Use the Chat Interface
 
-Examples of commands you can use:
+1. Click the **Show Chat Interface** button in the Unity MCP window
+2. Type your instructions in the message field
+3. Click **Send** to process your request
+
+Example prompts:
 - "Create a red cube at position (0, 1, 0)"
-- "Make a sphere and apply a blue material to it"
+- "Add a sphere to the scene and apply a blue material"
 - "List all objects in the current scene"
-- "Create a C# script named PlayerController"
+- "Write a simple movement script and attach it to the cube"
 
-### Connection Status
+## Connection Status Indicators
 
-The Unity MCP window displays status information for:
-- Unity Bridge: Shows if the local socket server is running
-- Python Server: Shows if the Python MCP server is connected
-- Ollama: Shows if the connection to Ollama is active
+The Unity MCP window provides status information for each component:
+
+- **Python Server Status**: Indicates whether the Python server is running
+  - Green: Connected
+  - Yellow: Connected but with issues
+  - Red: Not connected
+
+- **Unity Bridge Status**: Shows if the Unity socket server is running
+  - Running: Unity is listening for connections
+  - Stopped: Unity socket server is not active
+
+- **Ollama Status**: Shows the connection status to Ollama
+  - Connected: Successfully connected to Ollama server
+  - Not Connected: Unable to connect to Ollama
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **"Not Connected" Status for Python Server**
-   - Ensure the Python server is running (`python server.py` in the Python directory)
+   - Ensure the Python server is running (`python server.py`)
    - Check for errors in the Python console
-   - Verify that the ports match in both Unity and Python configurations
+   - Verify the Unity Bridge is running
 
-2. **"Error checking status" for Ollama**
-   - Ensure Ollama is running (`ollama serve`)
-   - Verify that the models are pulled correctly
-   - Check the Ollama host and port settings
+2. **Cannot find Unity MCP menu**
+   - Make sure the Editor scripts are properly imported in your project
+   - Check the Unity console for any errors
+   - Restart Unity if necessary
 
-3. **Model Not Working as Expected**
-   - Try adjusting the temperature setting (lower for more deterministic outputs)
-   - Some tasks might work better with specific models
-   - Check if the model has been properly pulled in Ollama
+3. **Ollama Connection Issues**
+   - Verify Ollama is running with `ollama serve`
+   - Check that models are properly pulled
+   - Ensure no firewall is blocking port 11434
 
-### Logs
+4. **MCP Command Execution Fails**
+   - Check Python console for detailed error messages
+   - Verify that the Unity Bridge is running
+   - Make sure the prompt is clear and specific
 
-- Unity logs are available in the Unity Console
-- Python server logs appear in the terminal where you run the server
-- Ollama logs are in the terminal where Ollama is running
+### Explicit Setup Instructions for Python Environment
+
+If you encounter issues setting up the Python environment:
+
+1. Install Python 3.10 or newer
+2. Install Ollama from [ollama.ai](https://ollama.ai/)
+3. Create a dedicated directory for the Python environment:
+   ```
+   mkdir C:\PythonMCP
+   cd C:\PythonMCP
+   ```
+4. Clone or download this repository and copy the Python folder:
+   ```
+   git clone https://github.com/ZundamonnoVRChatkaisetu/unity-mcp-ollama.git
+   copy unity-mcp-ollama\Python .
+   ```
+5. Create a virtual environment:
+   ```
+   python -m venv venv
+   ```
+6. Activate the virtual environment:
+   ```
+   venv\Scripts\activate
+   ```
+7. Install dependencies:
+   ```
+   cd Python
+   pip install -e .
+   ```
+8. Run the server:
+   ```
+   python server.py
+   ```
 
 ## Performance Considerations
 
