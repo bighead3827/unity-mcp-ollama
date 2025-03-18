@@ -117,6 +117,10 @@ public class MCPEditorWindow : EditorWindow
     private bool showChatInterface = false;
     private GUIStyle userMessageStyle;
     private GUIStyle assistantMessageStyle;
+    
+    // Message response tracking
+    private Dictionary<string, int> pendingMessages = new Dictionary<string, int>();
+    private float responseCheckTimer = 0.5f; // Check for responses every half second
 
     [MenuItem("Window/Unity MCP")]
     public static void ShowWindow()
@@ -152,6 +156,71 @@ public class MCPEditorWindow : EditorWindow
         {
             CheckPythonServerConnection();
             lastCheckTime = Time.realtimeSinceStartup;
+        }
+        
+        // Check for pending message responses
+        if (pendingMessages.Count > 0 && Time.realtimeSinceStartup - responseCheckTimer >= 0.5f)
+        {
+            responseCheckTimer = Time.realtimeSinceStartup;
+            CheckForSimulatedResponses();
+        }
+    }
+    
+    // Check for simulated responses to update the chat UI
+    private void CheckForSimulatedResponses()
+    {
+        var processedKeys = new List<string>();
+        
+        foreach (var kvp in pendingMessages)
+        {
+            string messageId = kvp.Key;
+            int messageIndex = kvp.Value;
+            
+            // If response is available, update the chat message
+            if (UnityMCPBridge.HasSimulatedResponse(messageId))
+            {
+                string response = UnityMCPBridge.GetSimulatedResponse(messageId);
+                
+                try
+                {
+                    var responseObj = JsonConvert.DeserializeObject<Dictionary<string, object>>(response);
+                    if (responseObj.TryGetValue("result", out object resultObj))
+                    {
+                        var resultDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(JsonConvert.SerializeObject(resultObj));
+                        
+                        if (resultDict.TryGetValue("llm_response", out object llmObj))
+                        {
+                            string llmResponse = llmObj.ToString();
+                            
+                            // Update the message in the chat history
+                            if (messageIndex < chatHistory.Count)
+                            {
+                                chatHistory[messageIndex] = new ChatMessage { 
+                                    sender = "Assistant", 
+                                    content = llmResponse 
+                                };
+                                
+                                // Mark this message as processed
+                                processedKeys.Add(messageId);
+                                
+                                // Force UI update
+                                Repaint();
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError($"Error parsing simulated response: {ex.Message}");
+                }
+            }
+        }
+        
+        // Remove processed messages from pending list
+        foreach (var key in processedKeys)
+        {
+            pendingMessages.Remove(key);
+            UnityMCPBridge.RemoveSimulatedResponse(key);
         }
     }
 
@@ -531,13 +600,17 @@ public class MCPEditorWindow : EditorWindow
         
         try
         {
+            // Generate a unique ID for this request
+            string messageId = Guid.NewGuid().ToString();
+            
             // Construct command to send to Python server
             var command = new
             {
                 type = "process_user_request",
                 @params = new
                 {
-                    prompt = message
+                    prompt = message,
+                    messageId = messageId  // Include the message ID
                 }
             };
             
@@ -547,62 +620,46 @@ public class MCPEditorWindow : EditorWindow
             int thinkingIndex = chatHistory.Count;
             chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Processing your request..." });
             
+            // Register this message as pending
+            pendingMessages[messageId] = thinkingIndex;
+            
             // Send command to Python server
             string response = await SendCommandToPythonServer(commandJson);
             
-            // Parse response
+            // Parse immediate response
             try
             {
                 var responseObj = JsonConvert.DeserializeObject<Dictionary<string, object>>(response);
-                if (responseObj.TryGetValue("result", out object resultObj))
+                
+                // If we got an immediate error, update the chat right away
+                if (responseObj.TryGetValue("status", out object statusObj) && statusObj.ToString() == "error")
                 {
-                    var resultDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(JsonConvert.SerializeObject(resultObj));
-                    
-                    if (resultDict.TryGetValue("status", out object statusObj) && statusObj.ToString() == "success")
+                    if (responseObj.TryGetValue("error", out object errorObj))
                     {
-                        string llmResponse = "";
-                        if (resultDict.TryGetValue("llm_response", out object llmObj))
-                        {
-                            llmResponse = llmObj.ToString();
-                        }
+                        // Update the "thinking" message with the error
+                        chatHistory[thinkingIndex] = new ChatMessage { 
+                            sender = "Assistant", 
+                            content = "Error: " + errorObj.ToString() 
+                        };
                         
-                        // Update the last message (replace "Thinking..." with the actual response)
-                        if (thinkingIndex < chatHistory.Count)
-                        {
-                            chatHistory[thinkingIndex] = new ChatMessage { sender = "Assistant", content = llmResponse };
-                        }
-                        else
-                        {
-                            chatHistory.Add(new ChatMessage { sender = "Assistant", content = llmResponse });
-                        }
-                    }
-                    else if (resultDict.TryGetValue("message", out object messageObj))
-                    {
-                        // Update the last message (replace "Thinking..." with the error message)
-                        if (thinkingIndex < chatHistory.Count)
-                        {
-                            chatHistory[thinkingIndex] = new ChatMessage { sender = "Assistant", content = "Error: " + messageObj.ToString() };
-                        }
-                        else
-                        {
-                            chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error: " + messageObj.ToString() });
-                        }
+                        // Remove from pending
+                        pendingMessages.Remove(messageId);
                     }
                 }
+                // Otherwise, the response will be picked up by the CheckForSimulatedResponses method
             }
             catch (Exception ex)
             {
                 UnityEngine.Debug.LogError($"Error parsing chat response: {ex.Message}");
                 
-                // Update the last message (replace "Thinking..." with the error message)
-                if (thinkingIndex < chatHistory.Count)
-                {
-                    chatHistory[thinkingIndex] = new ChatMessage { sender = "Assistant", content = "Error processing your request. Please try again." };
-                }
-                else
-                {
-                    chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error processing your request. Please try again." });
-                }
+                // Update the "thinking" message with the error
+                chatHistory[thinkingIndex] = new ChatMessage { 
+                    sender = "Assistant", 
+                    content = "Error processing your request. Please try again." 
+                };
+                
+                // Remove from pending
+                pendingMessages.Remove(messageId);
             }
         }
         catch (Exception e)
@@ -610,7 +667,10 @@ public class MCPEditorWindow : EditorWindow
             UnityEngine.Debug.LogError($"Error sending chat message: {e.Message}");
             
             // Add error message to chat history
-            chatHistory.Add(new ChatMessage { sender = "Assistant", content = "Error: Could not connect to the server. Please check your connection." });
+            chatHistory.Add(new ChatMessage { 
+                sender = "Assistant", 
+                content = "Error: Could not connect to the server. Please check your connection." 
+            });
         }
         
         // Force UI update
