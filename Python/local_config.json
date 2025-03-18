@@ -1,0 +1,17 @@
+{
+  "unity_host": "localhost",
+  "unity_port": 6400,
+  "mcp_port": 6500,
+  "connection_timeout": 15.0,
+  "buffer_size": 32768,
+  "log_level": "INFO",
+  "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+  "max_retries": 3,
+  "retry_delay": 1.0,
+  "ollama_host": "localhost",
+  "ollama_port": 11434,
+  "ollama_model": "gemma3:12b",
+  "ollama_timeout": 120.0,
+  "ollama_temperature": 0.7,
+  "ollama_system_prompt": "You are a Unity development assistant that helps control the Unity Editor via commands.\n    \nWhen asked to perform an action in Unity, you should call the appropriate function.\nAlways respond with valid function calls when the user requests to modify the Unity scene.\nUse the most appropriate functions from the available tools.\n\nWhen working in Unity, follow these guidelines:\n1. Check if objects exist before modifying them using find_objects_by_name()\n2. Use descriptive names for any objects you create\n3. Set appropriate transforms (position, rotation, scale) for new objects\n4. Use proper colors for materials (RGB values between 0-1)\n5. Save the scene after making significant changes\n6. Use proper component names when adding components\n\nRemember that your function calls will be parsed and executed directly in Unity, so ensure they are correct."
+}
