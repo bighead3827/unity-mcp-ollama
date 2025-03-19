@@ -114,18 +114,63 @@ class OllamaConnection:
         """
         commands = []
         
-        # Different LLMs format their function calls differently
-        # We'll look for common patterns and extract the relevant JSON
+        # Try to extract triple backtick code blocks first (most reliable)
+        import re
+        code_blocks = re.findall(r'```(?:json)?\s*(.*?)```', llm_response, re.DOTALL)
         
-        # Look for Python function call patterns
-        if "(" in llm_response and ")" in llm_response:
-            import re
+        # Process each code block
+        for block in code_blocks:
+            try:
+                # Try to parse as JSON
+                try:
+                    json_data = json.loads(block.strip())
+                    # Check if it's a command or array of commands
+                    if isinstance(json_data, list):
+                        for item in json_data:
+                            if isinstance(item, dict) and ('function' in item or 'name' in item):
+                                function_name = item.get('function') or item.get('name')
+                                args = item.get('arguments') or item.get('params') or item.get('args') or {}
+                                commands.append({"function": function_name, "arguments": args})
+                    elif isinstance(json_data, dict) and ('function' in json_data or 'name' in json_data):
+                        function_name = json_data.get('function') or json_data.get('name')
+                        args = json_data.get('arguments') or json_data.get('params') or json_data.get('args') or {}
+                        commands.append({"function": function_name, "arguments": args})
+                except json.JSONDecodeError:
+                    # Not valid JSON, try other patterns
+                    pass
+            except Exception as e:
+                logger.warning(f"Error processing code block: {str(e)}")
+        
+        # If no commands extracted from code blocks, try looking for JSON objects directly
+        if not commands:
+            # Find all potential JSON objects in the text
+            json_pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
+            json_matches = re.findall(json_pattern, llm_response)
             
+            for json_str in json_matches:
+                try:
+                    parsed = json.loads(json_str)
+                    if isinstance(parsed, dict) and ('function' in parsed or 'name' in parsed):
+                        function_name = parsed.get('function') or parsed.get('name')
+                        args = parsed.get('arguments') or parsed.get('params') or parsed.get('args') or {}
+                        commands.append({"function": function_name, "arguments": args})
+                except json.JSONDecodeError:
+                    # Not valid JSON, ignore
+                    pass
+                except Exception as e:
+                    logger.warning(f"Error parsing JSON object: {str(e)}")
+        
+        # If still no commands, try to look for function call patterns
+        if not commands:
             # Match patterns like: function_name(arg1="value", arg2=123)
             function_calls = re.findall(r'(\w+)\s*\((.*?)\)', llm_response)
             
             for func_name, args_str in function_calls:
                 try:
+                    # Skip common non-command function calls
+                    if func_name in ['print', 'console', 'log', 'Math', 'parseInt', 'parseFloat']:
+                        continue
+                        
                     # Parse the arguments
                     args_dict = {}
                     
@@ -150,7 +195,15 @@ class OllamaConnection:
                             try:
                                 value = json.loads(value.replace("'", '"'))
                             except:
-                                pass
+                                # Try to parse as a simple list of numbers
+                                try:
+                                    # Remove spaces and split by commas
+                                    nums = [float(x) if '.' in x else int(x) 
+                                           for x in value.strip('[]').replace(' ', '').split(',') 
+                                           if x.strip()]
+                                    value = nums
+                                except:
+                                    pass
                         # Handle numeric values
                         elif value.replace('.', '', 1).isdigit():
                             value = float(value) if '.' in value else int(value)
@@ -166,29 +219,12 @@ class OllamaConnection:
                 except Exception as e:
                     logger.warning(f"Failed to parse function call {func_name}: {str(e)}")
         
-        # Look for JSON patterns (used by some models)
-        json_matches = []
-        try:
-            # Find JSON-like structures between curly braces
-            import re
-            potential_jsons = re.findall(r'\{[^{}]*\}', llm_response)
-            
-            for json_str in potential_jsons:
-                try:
-                    parsed = json.loads(json_str)
-                    if isinstance(parsed, dict) and ('function' in parsed or 'name' in parsed):
-                        # Structure the command properly
-                        function_name = parsed.get('function') or parsed.get('name')
-                        args = parsed.get('arguments') or parsed.get('params') or parsed.get('args') or {}
-                        
-                        commands.append({"function": function_name, "arguments": args})
-                except:
-                    pass
-        except Exception as e:
-            logger.warning(f"Error parsing JSON in response: {str(e)}")
-        
-        # If we couldn't extract any commands, log a warning
-        if not commands:
+        # Log the extracted commands
+        if commands:
+            logger.info(f"Extracted {len(commands)} commands from response")
+            for cmd in commands:
+                logger.info(f"Command: {json.dumps(cmd)}")
+        else:
             logger.warning(f"Could not extract any MCP commands from response: {llm_response[:100]}...")
             
         return commands
