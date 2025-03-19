@@ -85,7 +85,14 @@ public static partial class UnityMCPBridge
     {
         if (!isRunning) return;
         isRunning = false;
-        listener.Stop();
+        try
+        {
+            listener.Stop();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Error stopping listener: {ex.Message}");
+        }
         EditorApplication.update -= ProcessCommands;
         Debug.Log("UnityMCPBridge stopped.");
     }
@@ -381,88 +388,97 @@ public static partial class UnityMCPBridge
                 messageId = Guid.NewGuid().ToString();
             }
             
-            // 実際のMCPサーバー接続コード
-            using (var client = new TcpClient())
+            // MCPサーバー接続が失敗した場合、シミュレーション応答を返すようにフォールバック
+            try 
             {
-                // Try to connect to MCP server
-                var connectTask = client.ConnectAsync("localhost", mcpPort);
-                if (await Task.WhenAny(connectTask, Task.Delay(5000)) != connectTask)
+                using (var client = new TcpClient())
                 {
-                    throw new TimeoutException("Connection to MCP server timed out");
-                }
-
-                using (var stream = client.GetStream())
-                {
-                    // Send the command
-                    byte[] commandBytes = System.Text.Encoding.UTF8.GetBytes(commandJson);
-                    await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
-                    
-                    // Read response
-                    byte[] buffer = new byte[32768]; // Large buffer
-                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                    string response = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    
-                    // Store the response for later retrieval by the UI
-                    if (!string.IsNullOrEmpty(messageId))
+                    // Try to connect to MCP server with increased timeout
+                    var connectionTask = client.ConnectAsync("localhost", mcpPort);
+                    if (await Task.WhenAny(connectionTask, Task.Delay(3000)) != connectionTask)
                     {
-                        simulatedResponses[messageId] = response;
+                        throw new TimeoutException("Connection to MCP server timed out");
                     }
-                    
-                    return response;
+
+                    // 接続成功の場合のみこのコードが実行される
+                    using (var stream = client.GetStream())
+                    {
+                        // Send the command
+                        byte[] commandBytes = System.Text.Encoding.UTF8.GetBytes(commandJson);
+                        await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
+                        
+                        // Read response with timeout
+                        byte[] buffer = new byte[32768]; // Large buffer
+                        var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
+                        if (await Task.WhenAny(readTask, Task.Delay(30000)) != readTask)
+                        {
+                            throw new TimeoutException("Timeout waiting for MCP server response");
+                        }
+                        
+                        int bytesRead = await readTask;
+                        string response = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        
+                        // Store the response for later retrieval by the UI
+                        if (!string.IsNullOrEmpty(messageId))
+                        {
+                            simulatedResponses[messageId] = response;
+                        }
+                        
+                        return response;
+                    }
                 }
             }
-            
-            /* シミュレーション応答コード (コメントアウト)
-            // Response simulation for different command types
-            if (commandType == "process_user_request")
+            catch (Exception ex)
             {
-                string prompt = parameters?["prompt"]?.ToString() ?? "No prompt provided";
+                Debug.LogWarning($"Failed to connect to MCP server, falling back to simulation: {ex.Message}");
                 
-                // Log the received prompt for debugging
-                Debug.Log($"Simulating response for chat prompt: {prompt}");
+                // フォールバック：シミュレーション応答
+                if (commandType == "process_user_request")
+                {
+                    string prompt = parameters?["prompt"]?.ToString() ?? "No prompt provided";
+                    
+                    Debug.Log($"Simulating response for chat prompt: {prompt}");
+                    
+                    var simulatedResponse = new
+                    {
+                        status = "success",
+                        result = new
+                        {
+                            status = "success",
+                            message = "Request processed successfully (simulated)",
+                            llm_response = $"Processing your request: \"{prompt}\"\n\nThis is a simulated response because I couldn't connect to the MCP server on port 6500. Please check that the Python server is running with the correct command: python server.py\n\nError details: {ex.Message}",
+                            commands_executed = 0,
+                            results = new object[] { }
+                        }
+                    };
+                    
+                    string responseJson = JsonConvert.SerializeObject(simulatedResponse);
+                    
+                    if (!string.IsNullOrEmpty(messageId))
+                    {
+                        simulatedResponses[messageId] = responseJson;
+                    }
+                    
+                    return responseJson;
+                }
                 
-                // Generate a simple simulated response
-                var simulatedResponse = new
+                // 他のコマンドタイプの場合の汎用的な応答
+                var genericResponse = new
                 {
                     status = "success",
                     result = new
                     {
-                        status = "success",
-                        message = "Request processed successfully",
-                        llm_response = $"Processing your request: \"{prompt}\"\n\nThis is a simulated response because the direct connection to the MCP server isn't working yet. The real implementation would use Ollama to generate a proper response.",
-                        commands_executed = 0,
-                        results = new object[] { }
+                        message = $"Command {commandType} was simulated (not actually sent to MCP server)",
+                        details = $"The connection to the MCP server on port 6500 failed: {ex.Message}"
                     }
                 };
                 
-                string responseJson = JsonConvert.SerializeObject(simulatedResponse);
-                
-                // Store the response for later retrieval by the UI
-                if (!string.IsNullOrEmpty(messageId))
-                {
-                    simulatedResponses[messageId] = responseJson;
-                }
-                
-                return responseJson;
+                return JsonConvert.SerializeObject(genericResponse);
             }
-            
-            // For other commands, return a generic success response
-            var genericResponse = new
-            {
-                status = "success",
-                result = new
-                {
-                    message = $"Command {commandType} was simulated (not actually sent to MCP server)",
-                    details = "The direct connection to the MCP server on port 6500 is not working yet"
-                }
-            };
-            
-            return JsonConvert.SerializeObject(genericResponse);
-            */
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error forwarding command to MCP server: {ex.Message}");
+            Debug.LogError($"Error in ForwardToMCPServer: {ex.Message}");
             
             var errorResponse = new
             {
@@ -470,8 +486,8 @@ public static partial class UnityMCPBridge
                 result = new
                 {
                     status = "error",
-                    message = $"Failed to communicate with MCP server: {ex.Message}",
-                    llm_response = "Sorry, there was an error connecting to the MCP server. Please make sure the Python server is running on port 6500."
+                    message = $"Failed to process command: {ex.Message}",
+                    llm_response = "Sorry, there was an error processing your request. Please make sure the Python server is running on port 6500."
                 }
             };
             
@@ -546,7 +562,7 @@ public static partial class UnityMCPBridge
                             string taskResponse = await ForwardToMCPServer("process_user_request", parameters);
                             
                             // Log the taskResponse for debugging (but limit the length)
-                            int maxLogLength = 500;
+                            int maxLogLength = 200;
                             string logText = taskResponse.Length > maxLogLength ? 
                                 taskResponse.Substring(0, maxLogLength) + "..." : 
                                 taskResponse;
@@ -583,19 +599,88 @@ public static partial class UnityMCPBridge
             // Handle get_ollama_status command - forward to Python MCP server
             if (commandType == "get_ollama_status")
             {
-                // 実際にPythonサーバーに転送
-                Task<string> forwardTask = ForwardToMCPServer("get_ollama_status", parameters);
-                forwardTask.Wait(); // 同期的に待機
-                return forwardTask.Result;
+                try 
+                {
+                    // 実際にPythonサーバーに転送
+                    Task<string> forwardTask = ForwardToMCPServer("get_ollama_status", parameters);
+                    forwardTask.Wait(5000); // 5秒のタイムアウトを設定
+                    
+                    if (forwardTask.IsCompleted)
+                    {
+                        return forwardTask.Result;
+                    }
+                    else
+                    {
+                        throw new TimeoutException("Operation timed out");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Error forwarding get_ollama_status: {ex.Message}");
+                    
+                    // シミュレーション応答を返す
+                    var statusResponse = new
+                    {
+                        status = "success",
+                        result = new
+                        {
+                            status = "disconnected",
+                            model = "unknown",
+                            host = "localhost",
+                            port = 11434,
+                            message = $"Connection error: {ex.Message}"
+                        }
+                    };
+                    return JsonConvert.SerializeObject(statusResponse);
+                }
             }
             
             // Handle configure_ollama command - forward to Python MCP server
             if (commandType == "configure_ollama")
             {
-                // 実際にPythonサーバーに転送
-                Task<string> forwardTask = ForwardToMCPServer("configure_ollama", parameters);
-                forwardTask.Wait(); // 同期的に待機
-                return forwardTask.Result;
+                try 
+                {
+                    // 実際にPythonサーバーに転送
+                    Task<string> forwardTask = ForwardToMCPServer("configure_ollama", parameters);
+                    forwardTask.Wait(5000); // 5秒のタイムアウトを設定
+                    
+                    if (forwardTask.IsCompleted)
+                    {
+                        return forwardTask.Result;
+                    }
+                    else
+                    {
+                        throw new TimeoutException("Operation timed out");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Error forwarding configure_ollama: {ex.Message}");
+                    
+                    // シミュレーション応答を返す
+                    string host = parameters?["host"]?.ToString() ?? "localhost";
+                    int port = parameters?["port"]?.ToObject<int>() ?? 11434;
+                    string model = parameters?["model"]?.ToString() ?? "gemma3:12b";
+                    float temperature = parameters?["temperature"]?.ToObject<float>() ?? 0.7f;
+                    
+                    var configResponse = new
+                    {
+                        status = "warning",
+                        result = new
+                        {
+                            status = "simulated",
+                            message = $"Configuration update simulated (MCP server error: {ex.Message})",
+                            config = new
+                            {
+                                host = host,
+                                port = port,
+                                model = model,
+                                temperature = temperature
+                            }
+                        }
+                    };
+                    return JsonConvert.SerializeObject(configResponse);
+                }
             }
 
             // For other commands - use original placeholder implementation
