@@ -318,15 +318,14 @@ async def configure_ollama(host: str = None, port: int = None,
         }
 
 # MCP TCP Server Host and Port settings
-MCP_SERVER_HOST = "localhost"
 MCP_SERVER_PORT = 6500
 
 # Run the server
 if __name__ == "__main__":
-    logger.info(f"Starting MCP TCP server on {MCP_SERVER_HOST}:{MCP_SERVER_PORT}")
+    logger.info(f"Starting MCP TCP server on port {MCP_SERVER_PORT}")
     try:
-        # Start TCP server on port 6500
-        mcp.run(transport='tcp', host=MCP_SERVER_HOST, port=MCP_SERVER_PORT)
+        # パラメータをportだけに修正
+        mcp.run(transport='tcp', port=MCP_SERVER_PORT)
     except Exception as e:
         logger.error(f"Error starting MCP TCP server: {e}")
         # Fall back to stdio if TCP fails
