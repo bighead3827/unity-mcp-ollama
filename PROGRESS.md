@@ -18,6 +18,8 @@
   - エラー耐性の強化とフォールバックメカニズム追加済み
   - TCPサーバーへの接続機能実装済み
   - Unityコマンド実行機能実装済み
+  - オブジェクト検索機能（find_objects_by_name）実装済み
+  - トランスフォーム操作機能（transform）実装済み
 - インストールとセットアップ手順の詳細化完了
 - バグ修正済み
   - デフォルトモデルをgemma3:12bに変更
@@ -26,6 +28,7 @@
   - 接続状態のトラッキング改善
   - ログ出力の最適化
   - カスタムTCPサーバー実装による連携問題解決
+  - find_objects_by_nameとtransformコマンドの実装
 
 ## 実装すべき機能
 1. ✅ リポジトリ作成
@@ -43,6 +46,8 @@
    - ✅ エラー処理の強化
    - ✅ カスタムTCPサーバーとの連携
    - ✅ Unityコマンド実行機能の実装
+   - ✅ オブジェクト検索機能（find_objects_by_name）の実装
+   - ✅ トランスフォーム操作機能（transform）の実装
 5. ✅ インストールとセットアップ手順の詳細化
 6. ✅ テスト実施とバグ修正
    - ✅ チャットエラー「Error: Command process_user_request was received」の修正
@@ -52,6 +57,7 @@
    - ✅ 接続ステータスログの最適化
    - ✅ TCP接続問題の解決のためのカスタムサーバー実装
    - ✅ Unity側のエラー処理強化と接続安定性向上
+   - ✅ find_objects_by_nameとtransformコマンドの実装
 
 ## 優先度の高いタスク
 1. ✅ Python側のOllama連携コードの実装
@@ -63,6 +69,7 @@
 7. ✅ ユーザーエクスペリエンスの改善（ログ最適化など）
 8. ✅ エラー処理の強化とフォールバックメカニズムの追加
 9. ✅ Unityコマンド（オブジェクト作成など）の実装
+10. ✅ オブジェクト検索とトランスフォーム操作の実装
 
 ## 解決した制約と課題
 元々のMCPライブラリではTCPモードがサポートされていないという制約がありましたが、この問題を解決するために以下の対策を実施しました：
@@ -76,6 +83,7 @@
    - TCPサーバーへの接続機能を実装
    - 接続エラー時のフォールバックメカニズムを実装
    - Unityコマンド（オブジェクト作成、変形など）の実行機能を追加
+   - find_objects_by_nameとtransformコマンドの実装を追加
 
 ## 今後の課題
 - さらに多くのUnityコマンドの実装（マテリアル、スクリプト、アセット関連など）
@@ -110,6 +118,8 @@
   - チャットリクエストがエコーバックされる問題を解決するために、シミュレーション応答機能を実装
   - 接続エラー処理を改善し、シミュレートされた応答機能を実装
   - 接続状態のログ出力を最適化し、状態変化時のみ出力するように変更
+  - `ObjectCommands.cs`を追加し、find_objects_by_nameとtransformコマンドを実装
+  - ProcessExtractedCommandsメソッドを更新して新しいコマンドを追加
 
 ### 2025-03-20
 - TCP接続の問題分析と検証
@@ -128,6 +138,8 @@
   - Unityコマンド（create_object, set_object_transform, delete_objectなど）の実行機能を追加
   - LLM応答からコマンドを抽出して実行する機能を追加
   - エラー処理とフォールバックメカニズムの強化
+  - find_objects_by_nameとtransformコマンドの実装を追加
+  - オブジェクト操作関連の機能を専用の`ObjectCommands.cs`クラスに分離
 
 ## 実装詳細
 ### カスタムTCPサーバーの実装
@@ -176,8 +188,13 @@
   - エラーハンドリングの強化
   - TCPサーバーへの接続機能
   - Unityコマンド（create_object, set_object_transform, delete_objectなど）の実装
+  - find_objects_by_nameとtransformコマンドの追加
   - エラー時のフォールバックメカニズム
   - メッセージIDに基づく応答の保存と取得機能
+- `ObjectCommands.cs`:
+  - オブジェクト検索機能（FindObjectsByName）の実装
+  - トランスフォーム操作機能（SetTransform）の実装
+  - Vector3変換ヘルパーメソッド
 
 ### Unityコマンドの実装
 - 基本的なオブジェクト操作:
@@ -185,6 +202,8 @@
   - `SetObjectTransform`: 位置、回転、スケールの設定
   - `DeleteObject`: オブジェクトの削除
   - `EditorAction`: エディタコマンド（PLAY, PAUSE, STOP, SAVEなど）
+  - `FindObjectsByName`: 名前によるオブジェクト検索
+  - `TransformObject`: オブジェクトのトランスフォーム操作
 
 ### バグ修正詳細
 1. **モデル設定の修正**
@@ -228,6 +247,13 @@
      - `ProcessExtractedCommands`メソッドを実装
      - 基本的なUnityコマンド（CreateObject, SetObjectTransform, DeleteObjectなど）を実装
      - JSON応答からコマンドを抽出する機能を追加
+
+8. **find_objects_by_nameとtransformコマンドの実装**
+   - 問題: これらのコマンドが実装されておらず、エラーが発生していた
+   - 解決策:
+     - 新しい`ObjectCommands.cs`クラスを作成
+     - FindObjectsByNameメソッドとSetTransformメソッドを実装
+     - UnityMCPBridge.csのProcessExtractedCommandsメソッドを更新
 
 ## 実装方法（アセットとして使用）
 
@@ -297,6 +323,8 @@
    - トランスフォーム設定: 位置、回転、スケールの変更
    - オブジェクト削除
    - エディタ操作: play, pause, stop, saveなど
+   - オブジェクト検索: 名前に基づいて検索
+   - トランスフォーム操作: 位置・回転・スケールの一括設定
 
 ### 確認事項
 
