@@ -29,6 +29,7 @@
   - ログ出力の最適化
   - カスタムTCPサーバー実装による連携問題解決
   - find_objects_by_nameとtransformコマンドの実装
+  - find_objects_by_nameとtransformコマンドのエラー処理改善
 
 ## 実装すべき機能
 1. ✅ リポジトリ作成
@@ -48,6 +49,7 @@
    - ✅ Unityコマンド実行機能の実装
    - ✅ オブジェクト検索機能（find_objects_by_name）の実装
    - ✅ トランスフォーム操作機能（transform）の実装
+   - ✅ エラー耐性の強化（必須パラメータがない場合の処理）
 5. ✅ インストールとセットアップ手順の詳細化
 6. ✅ テスト実施とバグ修正
    - ✅ チャットエラー「Error: Command process_user_request was received」の修正
@@ -58,6 +60,7 @@
    - ✅ TCP接続問題の解決のためのカスタムサーバー実装
    - ✅ Unity側のエラー処理強化と接続安定性向上
    - ✅ find_objects_by_nameとtransformコマンドの実装
+   - ✅ find_objects_by_nameとtransformコマンドのエラー処理改善
 
 ## 優先度の高いタスク
 1. ✅ Python側のOllama連携コードの実装
@@ -70,6 +73,7 @@
 8. ✅ エラー処理の強化とフォールバックメカニズムの追加
 9. ✅ Unityコマンド（オブジェクト作成など）の実装
 10. ✅ オブジェクト検索とトランスフォーム操作の実装
+11. ✅ エラー処理の強化（必須パラメータがない場合のフォールバック）
 
 ## 解決した制約と課題
 元々のMCPライブラリではTCPモードがサポートされていないという制約がありましたが、この問題を解決するために以下の対策を実施しました：
@@ -84,6 +88,7 @@
    - 接続エラー時のフォールバックメカニズムを実装
    - Unityコマンド（オブジェクト作成、変形など）の実行機能を追加
    - find_objects_by_nameとtransformコマンドの実装を追加
+   - エラー処理の強化（パラメータがない場合のフォールバック動作）
 
 ## 今後の課題
 - さらに多くのUnityコマンドの実装（マテリアル、スクリプト、アセット関連など）
@@ -120,6 +125,8 @@
   - 接続状態のログ出力を最適化し、状態変化時のみ出力するように変更
   - `ObjectCommands.cs`を追加し、find_objects_by_nameとtransformコマンドを実装
   - ProcessExtractedCommandsメソッドを更新して新しいコマンドを追加
+  - find_objects_by_nameとtransformコマンドのエラー処理を強化
+  - パラメータが欠けている場合もエラーを出さないように改善
 
 ### 2025-03-20
 - TCP接続の問題分析と検証
@@ -140,6 +147,7 @@
   - エラー処理とフォールバックメカニズムの強化
   - find_objects_by_nameとtransformコマンドの実装を追加
   - オブジェクト操作関連の機能を専用の`ObjectCommands.cs`クラスに分離
+  - エラー処理の改善（必須パラメータがない場合にもエラーを出さないよう修正）
 
 ## 実装詳細
 ### カスタムTCPサーバーの実装
@@ -189,12 +197,14 @@
   - TCPサーバーへの接続機能
   - Unityコマンド（create_object, set_object_transform, delete_objectなど）の実装
   - find_objects_by_nameとtransformコマンドの追加
+  - パラメータがない場合にもエラーではなく警告を表示するよう修正
   - エラー時のフォールバックメカニズム
   - メッセージIDに基づく応答の保存と取得機能
 - `ObjectCommands.cs`:
   - オブジェクト検索機能（FindObjectsByName）の実装
   - トランスフォーム操作機能（SetTransform）の実装
   - Vector3変換ヘルパーメソッド
+  - エラー処理の強化（無効なパラメータのハンドリング）
 
 ### Unityコマンドの実装
 - 基本的なオブジェクト操作:
@@ -254,6 +264,13 @@
      - 新しい`ObjectCommands.cs`クラスを作成
      - FindObjectsByNameメソッドとSetTransformメソッドを実装
      - UnityMCPBridge.csのProcessExtractedCommandsメソッドを更新
+
+9. **コマンドのエラー処理強化**
+   - 問題: 必須パラメータがない場合にエラーが発生していた
+   - 解決策:
+     - FindObjectsByNameメソッドでオブジェクト名が空の場合でも全オブジェクトをリスト表示するように修正
+     - TransformObjectメソッドで引数がnullの場合の対応を追加
+     - ObjectCommands.csのエラー処理を強化（無効なVector3パラメータの処理等）
 
 ## 実装方法（アセットとして使用）
 
