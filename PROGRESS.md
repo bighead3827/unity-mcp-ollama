@@ -23,6 +23,7 @@
   - get_object_propertiesコマンド実装済み
   - sceneコマンド実装済み
   - set_object_transform改善済み
+  - 名前空間の追加と修正完了
 - インストールとセットアップ手順の詳細化完了
 - バグ修正済み
   - デフォルトモデルをgemma3:12bに変更
@@ -36,6 +37,7 @@
   - get_object_propertiesコマンド実装による未実装エラーの解消
   - sceneコマンド実装による未実装エラーの解消
   - set_object_transform改善でオブジェクト名必須エラー解消
+  - 名前空間追加（UnityEditor.SceneManagement）によるコンパイルエラー解消
 
 ## 実装すべき機能
 1. ✅ リポジトリ作成
@@ -59,6 +61,7 @@
    - ✅ get_object_propertiesコマンドの実装
    - ✅ sceneコマンドの実装
    - ✅ set_object_transformの改善（引数チェック）
+   - ✅ 必要な名前空間の追加（UnityEditor.SceneManagement）
 5. ✅ インストールとセットアップ手順の詳細化
 6. ✅ テスト実施とバグ修正
    - ✅ チャットエラー「Error: Command process_user_request was received」の修正
@@ -73,6 +76,7 @@
    - ✅ get_object_propertiesコマンド実装
    - ✅ sceneコマンド実装
    - ✅ set_object_transform引数チェック強化
+   - ✅ 名前空間エラーの修正（EditorSceneManager等）
 
 ## 優先度の高いタスク
 1. ✅ Python側のOllama連携コードの実装
@@ -87,6 +91,7 @@
 10. ✅ オブジェクト検索とトランスフォーム操作の実装
 11. ✅ エラー処理の強化（必須パラメータがない場合のフォールバック）
 12. ✅ 未実装コマンド（get_object_properties, scene）の実装
+13. ✅ コンパイルエラーの修正（名前空間追加）
 
 ## 解決した制約と課題
 元々のMCPライブラリではTCPモードがサポートされていないという制約がありましたが、この問題を解決するために以下の対策を実施しました：
@@ -103,6 +108,7 @@
    - find_objects_by_nameとtransformコマンドの実装を追加
    - エラー処理の強化（パラメータがない場合のフォールバック動作）
    - 未実装コマンド（get_object_properties, scene）の実装
+   - 必要な名前空間（UnityEditor.SceneManagement）の追加
 
 ## 今後の課題
 - さらに多くのUnityコマンドの実装（マテリアル、スクリプト、アセット関連など）
@@ -143,6 +149,7 @@
   - パラメータが欠けている場合もエラーを出さないように改善
   - get_object_propertiesコマンドとsceneコマンドを実装
   - set_object_transformを改善し引数の厳密なチェックを追加
+  - 名前空間の追加（UnityEditor.SceneManagement）でコンパイルエラーを解消
 
 ### 2025-03-20
 - TCP接続の問題分析と検証
@@ -166,6 +173,7 @@
   - エラー処理の改善（必須パラメータがない場合にもエラーを出さないよう修正）
   - get_object_propertiesコマンドとsceneコマンドを実装
   - set_object_transform改善（引数チェック強化）
+  - 必要な名前空間の追加（UnityEditor.SceneManagement）によるコンパイルエラー解消
 
 ## 実装詳細
 ### カスタムTCPサーバーの実装
@@ -220,6 +228,7 @@
   - メッセージIDに基づく応答の保存と取得機能
   - get_object_propertiesコマンドとsceneコマンドの実装
   - set_object_transformの引数チェック強化
+  - 必要な名前空間の追加（UnityEditor.SceneManagement）
 - `ObjectCommands.cs`:
   - オブジェクト検索機能（FindObjectsByName）の実装
   - トランスフォーム操作機能（SetTransform）の実装
@@ -307,6 +316,13 @@
       - 引数のnullチェックを追加
       - オブジェクト名が空の場合は警告を表示して処理を中断
       - 存在しないオブジェクト名のエラー処理を強化
+
+12. **名前空間エラーの修正**
+    - 問題: EditorSceneManagerなどのシーン操作関連クラスが認識されていなかった
+    - 解決策:
+      - UnityEditor.SceneManagement名前空間を追加
+      - UnityEngine.SceneManagement名前空間を追加
+      - 関連するenum型（NewSceneSetup, NewSceneMode, OpenSceneMode）が認識されるように修正
 
 ## 実装方法（アセットとして使用）
 
