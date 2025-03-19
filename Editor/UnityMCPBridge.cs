@@ -369,6 +369,9 @@ public static partial class UnityMCPBridge
     // Helper method to forward a command to the Python MCP TCP server
     private static async Task<string> ForwardToMCPServer(string commandType, JObject parameters)
     {
+        // これが追加されるmessageId変数
+        string messageId = null;
+        
         try
         {
             var command = new
@@ -380,7 +383,6 @@ public static partial class UnityMCPBridge
             string commandJson = JsonConvert.SerializeObject(command);
             
             // Extract message ID if present for simulated responses
-            string messageId = null;
             if (parameters != null && parameters["messageId"] != null)
             {
                 messageId = parameters["messageId"].ToString();
