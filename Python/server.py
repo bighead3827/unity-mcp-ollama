@@ -317,17 +317,17 @@ async def configure_ollama(host: str = None, port: int = None,
             }
         }
 
-# MCP TCP Server Host and Port settings
+# MCP Server settings
 MCP_SERVER_PORT = 6500
 
 # Run the server
 if __name__ == "__main__":
-    logger.info(f"Starting MCP TCP server on port {MCP_SERVER_PORT}")
+    logger.info("Starting MCP server using stdio transport")
     try:
-        # パラメータをportだけに修正
-        mcp.run(transport='tcp', port=MCP_SERVER_PORT)
-    except Exception as e:
-        logger.error(f"Error starting MCP TCP server: {e}")
-        # Fall back to stdio if TCP fails
-        logger.info("Falling back to stdio transport")
+        # FastMCPライブラリが'tcp'または'port'パラメータをサポートしていないようなので、
+        # stdio トランスポートだけを使用します
         mcp.run(transport='stdio')
+    except Exception as e:
+        logger.error(f"Error starting MCP server: {e}")
+        logger.info("Falling back to default mode")
+        mcp.run()  # パラメータなしでデフォルト動作
