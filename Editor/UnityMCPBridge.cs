@@ -527,7 +527,6 @@ public static partial class UnityMCPBridge
                 Debug.Log($"Executing Unity command: {function}");
                 
                 // ここでUnityコマンドを実行
-                // 例: create_object, set_transform, etc.
                 switch (function.ToLower())
                 {
                     case "create_object":
@@ -548,6 +547,16 @@ public static partial class UnityMCPBridge
                         EditorAction(arguments?["action"]?.ToString());
                         break;
                         
+                    // 追加：find_objects_by_name コマンドの実装
+                    case "find_objects_by_name":
+                        FindObjectsByName(arguments?["name"]?.ToString());
+                        break;
+                        
+                    // 追加：transform コマンドの実装
+                    case "transform":
+                        TransformObject(arguments);
+                        break;
+                        
                     default:
                         Debug.LogWarning($"Unimplemented command: {function}");
                         break;
@@ -558,6 +567,76 @@ public static partial class UnityMCPBridge
                 Debug.LogError($"Error executing command {cmd["function"]}: {ex.Message}");
             }
         }
+    }
+    
+    // 追加：FindObjectsByName の実装
+    private static void FindObjectsByName(string objectName)
+    {
+        if (string.IsNullOrEmpty(objectName))
+        {
+            Debug.LogError("Object name is required for find_objects_by_name");
+            return;
+        }
+        
+        GameObject[] objects = ObjectCommands.FindObjectsByName(objectName);
+        
+        if (objects.Length == 0)
+        {
+            Debug.Log($"No objects found with name containing '{objectName}'");
+        }
+        else
+        {
+            Debug.Log($"Found {objects.Length} objects with name containing '{objectName}':");
+            foreach (var obj in objects)
+            {
+                Debug.Log($"- {obj.name}");
+            }
+        }
+    }
+    
+    // 追加：TransformObject の実装
+    private static void TransformObject(JObject arguments)
+    {
+        string name = arguments?["name"]?.ToString();
+        if (string.IsNullOrEmpty(name))
+        {
+            Debug.LogError("Object name is required for transform command");
+            return;
+        }
+        
+        GameObject obj = GameObject.Find(name);
+        if (obj == null)
+        {
+            Debug.LogError($"Object '{name}' not found");
+            return;
+        }
+        
+        Vector3? position = null;
+        Vector3? rotation = null;
+        Vector3? scale = null;
+        
+        // 位置情報があれば変換
+        if (arguments["position"] is JArray posArray && posArray.Count >= 3)
+        {
+            position = ObjectCommands.ParseVector3(posArray);
+        }
+        
+        // 回転情報があれば変換
+        if (arguments["rotation"] is JArray rotArray && rotArray.Count >= 3)
+        {
+            rotation = ObjectCommands.ParseVector3(rotArray);
+        }
+        
+        // スケール情報があれば変換
+        if (arguments["scale"] is JArray scaleArray && scaleArray.Count >= 3)
+        {
+            scale = ObjectCommands.ParseVector3(scaleArray);
+        }
+        
+        // トランスフォームを設定
+        ObjectCommands.SetTransform(obj, position, rotation, scale);
+        
+        Debug.Log($"Transformed object '{name}'");
     }
     
     // Simple Unity command implementations
