@@ -16,11 +16,12 @@ public static class ObjectCommands
     /// <returns>見つかったオブジェクトのリスト</returns>
     public static GameObject[] FindObjectsByName(string name)
     {
-        if (string.IsNullOrEmpty(name))
-            return new GameObject[0];
-
         // シーン内の全GameObjectを検索
         var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>(true);
+        
+        // 名前が指定されていない場合はすべてのオブジェクトを返す
+        if (string.IsNullOrEmpty(name))
+            return allObjects;
         
         // 名前が一致または含まれるオブジェクトをフィルタリング
         return allObjects.Where(obj => obj.name.Contains(name)).ToArray();
@@ -75,16 +76,35 @@ public static class ObjectCommands
     public static void SetTransform(GameObject targetObject, Vector3? position = null, Vector3? rotation = null, Vector3? scale = null)
     {
         if (targetObject == null)
+        {
+            Debug.LogWarning("Cannot set transform for null object");
             return;
+        }
+        
+        // パラメータが一つも指定されていない場合は警告
+        if (!position.HasValue && !rotation.HasValue && !scale.HasValue)
+        {
+            Debug.LogWarning($"No transform parameters specified for object '{targetObject.name}'");
+            return;
+        }
         
         if (position.HasValue)
+        {
             targetObject.transform.position = position.Value;
+            Debug.Log($"Set position of '{targetObject.name}' to {position.Value}");
+        }
         
         if (rotation.HasValue)
+        {
             targetObject.transform.eulerAngles = rotation.Value;
+            Debug.Log($"Set rotation of '{targetObject.name}' to {rotation.Value}");
+        }
         
         if (scale.HasValue)
+        {
             targetObject.transform.localScale = scale.Value;
+            Debug.Log($"Set scale of '{targetObject.name}' to {scale.Value}");
+        }
     }
 
     /// <summary>
@@ -95,7 +115,10 @@ public static class ObjectCommands
     public static Vector3 ParseVector3(float[] values)
     {
         if (values == null || values.Length < 3)
+        {
+            Debug.LogWarning("Invalid Vector3 array values, using Vector3.zero instead");
             return Vector3.zero;
+        }
         
         return new Vector3(values[0], values[1], values[2]);
     }
@@ -108,12 +131,23 @@ public static class ObjectCommands
     public static Vector3 ParseVector3(JArray jArray)
     {
         if (jArray == null || jArray.Count < 3)
+        {
+            Debug.LogWarning("Invalid JArray values for Vector3, using Vector3.zero instead");
             return Vector3.zero;
+        }
         
-        return new Vector3(
-            jArray[0].Value<float>(),
-            jArray[1].Value<float>(),
-            jArray[2].Value<float>()
-        );
+        try
+        {
+            return new Vector3(
+                jArray[0].Value<float>(),
+                jArray[1].Value<float>(),
+                jArray[2].Value<float>()
+            );
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"Error parsing Vector3 from JArray: {ex.Message}");
+            return Vector3.zero;
+        }
     }
 }
