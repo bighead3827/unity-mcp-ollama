@@ -11,6 +11,8 @@
   - MCP対応レスポンスフォーマットの実装済み
   - 設定ファイルの修正済み
   - カスタムTCPサーバー実装完了
+  - Ollamaシステムプロンプト強化済み
+  - コマンド抽出機能改善済み
 - Unity側の実装完了
   - Ollama設定UI追加済み
   - 接続処理の修正済み
@@ -38,6 +40,8 @@
   - sceneコマンド実装による未実装エラーの解消
   - set_object_transform改善でオブジェクト名必須エラー解消
   - 名前空間追加（UnityEditor.SceneManagement）によるコンパイルエラー解消
+  - Ollamaシステムプロンプト強化によるコマンド生成精度向上
+  - コマンド抽出機能の改善によるJSONパース強化
 
 ## 実装すべき機能
 1. ✅ リポジトリ作成
@@ -48,6 +52,8 @@
    - ✅ 設定ファイルの修正 (`config.py`のOllama設定)
    - ❌ FastMCPでのTCPサーバーモードの実装 → MCPライブラリでサポートされていない
    - ✅ カスタムTCPサーバーの実装 (`tcp_server.py`)
+   - ✅ Ollamaシステムプロンプトの強化 (`ollama_prompt.py`)
+   - ✅ コマンド抽出機能の改善 (`ollama_connection.py`)
 4. ✅ Unityパッケージの修正
    - ✅ Ollama設定UI追加
    - ✅ 接続処理の修正
@@ -77,6 +83,8 @@
    - ✅ sceneコマンド実装
    - ✅ set_object_transform引数チェック強化
    - ✅ 名前空間エラーの修正（EditorSceneManager等）
+   - ✅ Ollamaシステムプロンプト強化によるコマンド生成精度向上
+   - ✅ コマンド抽出機能の改善によるJSONパース強化
 
 ## 優先度の高いタスク
 1. ✅ Python側のOllama連携コードの実装
@@ -92,6 +100,8 @@
 11. ✅ エラー処理の強化（必須パラメータがない場合のフォールバック）
 12. ✅ 未実装コマンド（get_object_properties, scene）の実装
 13. ✅ コンパイルエラーの修正（名前空間追加）
+14. ✅ Ollamaシステムプロンプトの強化
+15. ✅ コマンド抽出機能の改善（JSONパース強化）
 
 ## 解決した制約と課題
 元々のMCPライブラリではTCPモードがサポートされていないという制約がありましたが、この問題を解決するために以下の対策を実施しました：
@@ -100,6 +110,8 @@
    - `tcp_server.py`: 独自のTCPサーバーを実装
    - Ollamaとの連携機能を維持しつつ、TCP経由での通信をサポート
    - リクエスト処理とレスポンス生成の完全実装
+   - `ollama_prompt.py`: 強化されたシステムプロンプトを実装
+   - `ollama_connection.py`: コマンド抽出機能を強化
 
 2. Unity側の実装:
    - TCPサーバーへの接続機能を実装
@@ -129,6 +141,8 @@
   - `server.py`: Ollamaを使用した処理とMCP関数の実装
   - `pyproject.toml`: 依存関係の更新
   - `Python/README.md`: Python側の使用方法ドキュメント追加
+  - `ollama_prompt.py`: Ollamaに対するシステムプロンプトを強化
+  - `ollama_connection.py`: コマンド抽出機能を改善し、JSONパース機能を強化
 - Unity側の実装完了
   - `MCPEditorWindow.cs`: Ollama設定UI、チャットインターフェース追加
   - `UnityMCPBridge.cs`: ソケット通信の基盤コード実装
@@ -150,6 +164,8 @@
   - get_object_propertiesコマンドとsceneコマンドを実装
   - set_object_transformを改善し引数の厳密なチェックを追加
   - 名前空間の追加（UnityEditor.SceneManagement）でコンパイルエラーを解消
+  - Ollamaのシステムプロンプトを強化しコマンド生成精度を向上
+  - コマンド抽出機能を改善してJSON形式の認識を強化
 
 ### 2025-03-20
 - TCP接続の問題分析と検証
@@ -162,6 +178,12 @@
   - MCPプロトコルに対応するコマンドハンドラーを実装
   - Ollamaとの連携機能を維持
   - エラーハンドリングとログ機能の強化
+
+- Ollamaシステムプロンプトと抽出機能の強化
+  - `ollama_prompt.py`: コマンド生成方法を具体的に指示するシステムプロンプトを実装
+  - `ollama_connection.py`: JSONパースの機能を強化
+  - BacktickコードブロックからのJSON抽出を優先するように改良
+  - 配列形式のパラメータ解析を改善
 
 - Unity側の機能強化
   - TCPサーバーへの接続処理を実装
@@ -187,11 +209,20 @@
     - `get_ollama_status`: Ollamaの状態を確認
     - `configure_ollama`: Ollamaの設定を変更
 
-### Ollamaとの連携
+### Ollamaとの連携強化
 - `ollama_connection.py`モジュールを作成し、Ollama APIとの通信を担当
 - 主な機能:
   - APIとの接続・応答取得
   - ローカルLLMからのテキスト応答をMCPコマンドに変換
+  - JSON形式のコマンド抽出を強化（コードブロック、直接JSON、関数呼び出し形式）
+  - 配列パラメータの解析精度を向上
+
+### システムプロンプトの強化
+- `ollama_prompt.py`: Ollamaに送信するシステムプロンプトを強化
+  - 利用可能なUnityコマンドの詳細説明
+  - 正確なコマンド形式の例示
+  - パラメータの要件と形式の明示
+  - 重要なルール（必須パラメータ、適切な形式など）の強調
 
 ### 設定機能の拡張
 - `config.py`ファイルにOllama固有の設定を追加:
@@ -207,6 +238,7 @@
   - ポート6500でリッスン
   - JSONフォーマットのリクエスト/レスポンス処理
   - LLM応答からのコマンド抽出機能
+  - 強化されたシステムプロンプトの使用
 
 ### Unity側の改修
 - `MCPEditorWindow.cs`:
@@ -323,6 +355,23 @@
       - UnityEditor.SceneManagement名前空間を追加
       - UnityEngine.SceneManagement名前空間を追加
       - 関連するenum型（NewSceneSetup, NewSceneMode, OpenSceneMode）が認識されるように修正
+
+13. **Ollamaのシステムプロンプト強化**
+    - 問題: LLMがUnityコマンドを適切な形式で生成していなかった
+    - 解決策:
+      - 新しい`ollama_prompt.py`ファイルを追加
+      - 利用可能なコマンドの詳細説明と例を追加
+      - 必須パラメータと適切な形式を強調
+      - `tcp_server.py`を修正して新しいシステムプロンプトを使用
+
+14. **コマンド抽出機能の改善**
+    - 問題: LLM応答からのJSON形式のコマンド抽出が不十分だった
+    - 解決策:
+      - バックティックで囲まれたコードブロックからの抽出を優先
+      - 直接的なJSON形式の認識を強化
+      - 関数呼び出し形式のパース改善
+      - 配列パラメータの解析強化
+      - 詳細なログ出力を追加
 
 ## 実装方法（アセットとして使用）
 
