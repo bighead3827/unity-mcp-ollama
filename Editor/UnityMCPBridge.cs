@@ -6,11 +6,12 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
+using UnityEditor.SceneManagement; // 追加: シーン操作に必要
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.IO;
-using UnityEngine.SceneManagement;
 
 [InitializeOnLoad]
 public static partial class UnityMCPBridge
