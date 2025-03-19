@@ -549,7 +549,9 @@ public static partial class UnityMCPBridge
                         
                     // 追加：find_objects_by_name コマンドの実装
                     case "find_objects_by_name":
-                        FindObjectsByName(arguments?["name"]?.ToString());
+                        // パラメータが存在しない場合でもエラーを出さずに空文字列として処理
+                        string searchName = arguments?["name"]?.ToString() ?? "";
+                        FindObjectsByName(searchName);
                         break;
                         
                     // 追加：transform コマンドの実装
@@ -569,12 +571,32 @@ public static partial class UnityMCPBridge
         }
     }
     
-    // 追加：FindObjectsByName の実装
+    // 追加：FindObjectsByName の実装 - エラー処理を改善
     private static void FindObjectsByName(string objectName)
     {
+        // オブジェクト名が空の場合でもエラーを出さずに警告を表示
         if (string.IsNullOrEmpty(objectName))
         {
-            Debug.LogError("Object name is required for find_objects_by_name");
+            Debug.LogWarning("No name provided for find_objects_by_name, searching for all objects");
+            // 空の場合は全オブジェクトをリスト表示
+            GameObject[] allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            if (allObjects.Length == 0)
+            {
+                Debug.Log("No objects found in scene");
+            }
+            else
+            {
+                Debug.Log($"Found {allObjects.Length} objects in scene:");
+                int maxDisplayCount = Math.Min(10, allObjects.Length); // 表示数を制限
+                for (int i = 0; i < maxDisplayCount; i++)
+                {
+                    Debug.Log($"- {allObjects[i].name}");
+                }
+                if (allObjects.Length > maxDisplayCount)
+                {
+                    Debug.Log($"... and {allObjects.Length - maxDisplayCount} more objects");
+                }
+            }
             return;
         }
         
@@ -594,13 +616,20 @@ public static partial class UnityMCPBridge
         }
     }
     
-    // 追加：TransformObject の実装
+    // 追加：TransformObject の実装 - エラー処理を改善
     private static void TransformObject(JObject arguments)
     {
-        string name = arguments?["name"]?.ToString();
+        // 引数がnullの場合の対策
+        if (arguments == null)
+        {
+            Debug.LogWarning("No arguments provided for transform command");
+            return;
+        }
+        
+        string name = arguments["name"]?.ToString();
         if (string.IsNullOrEmpty(name))
         {
-            Debug.LogError("Object name is required for transform command");
+            Debug.LogWarning("Object name is required for transform command");
             return;
         }
         
