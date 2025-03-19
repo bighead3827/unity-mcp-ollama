@@ -10,6 +10,7 @@ using UnityEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.IO;
+using UnityEngine.SceneManagement;
 
 [InitializeOnLoad]
 public static partial class UnityMCPBridge
@@ -559,6 +560,18 @@ public static partial class UnityMCPBridge
                         TransformObject(arguments);
                         break;
                         
+                    // 新規実装：get_object_properties コマンドの実装
+                    case "get_object_properties":
+                        string objName = arguments?["name"]?.ToString() ?? "";
+                        GetObjectProperties(objName);
+                        break;
+                        
+                    // 新規実装：scene コマンドの実装
+                    case "scene":
+                        string sceneAction = arguments?["action"]?.ToString() ?? "info";
+                        HandleSceneCommand(sceneAction, arguments);
+                        break;
+                        
                     default:
                         Debug.LogWarning($"Unimplemented command: {function}");
                         break;
@@ -568,6 +581,195 @@ public static partial class UnityMCPBridge
             {
                 Debug.LogError($"Error executing command {cmd["function"]}: {ex.Message}");
             }
+        }
+    }
+    
+    // 新規実装：get_object_properties
+    private static void GetObjectProperties(string objectName)
+    {
+        if (string.IsNullOrEmpty(objectName))
+        {
+            Debug.LogWarning("No name provided for get_object_properties, operation aborted");
+            return;
+        }
+        
+        GameObject obj = GameObject.Find(objectName);
+        if (obj == null)
+        {
+            Debug.LogWarning($"Object '{objectName}' not found for get_object_properties");
+            return;
+        }
+        
+        // オブジェクトの基本情報を取得
+        Debug.Log($"Object Properties for '{objectName}':");
+        Debug.Log($"- Position: {obj.transform.position}");
+        Debug.Log($"- Rotation: {obj.transform.eulerAngles}");
+        Debug.Log($"- Scale: {obj.transform.localScale}");
+        Debug.Log($"- Active: {obj.activeSelf}");
+        
+        // コンポーネント情報
+        Component[] components = obj.GetComponents<Component>();
+        Debug.Log($"- Components ({components.Length}):");
+        foreach (Component component in components)
+        {
+            if (component != null)
+            {
+                Debug.Log($"  - {component.GetType().Name}");
+            }
+        }
+        
+        // 子オブジェクト
+        int childCount = obj.transform.childCount;
+        Debug.Log($"- Child Objects ({childCount}):");
+        for (int i = 0; i < childCount; i++)
+        {
+            Transform child = obj.transform.GetChild(i);
+            Debug.Log($"  - {child.name}");
+        }
+    }
+    
+    // 新規実装：scene コマンド
+    private static void HandleSceneCommand(string action, JObject arguments)
+    {
+        switch (action.ToLower())
+        {
+            case "info":
+                GetSceneInfo();
+                break;
+                
+            case "create":
+                string sceneName = arguments?["name"]?.ToString();
+                if (string.IsNullOrEmpty(sceneName))
+                {
+                    Debug.LogError("Scene name is required for scene create action");
+                    return;
+                }
+                CreateNewScene(sceneName);
+                break;
+                
+            case "load":
+                string sceneToLoad = arguments?["name"]?.ToString();
+                if (string.IsNullOrEmpty(sceneToLoad))
+                {
+                    Debug.LogError("Scene name is required for scene load action");
+                    return;
+                }
+                LoadScene(sceneToLoad);
+                break;
+                
+            default:
+                Debug.LogWarning($"Unknown scene action: {action}");
+                GetSceneInfo(); // デフォルトで情報表示
+                break;
+        }
+    }
+    
+    // シーン情報を取得
+    private static void GetSceneInfo()
+    {
+        Scene activeScene = SceneManager.GetActiveScene();
+        Debug.Log("Current Scene Information:");
+        Debug.Log($"- Name: {activeScene.name}");
+        Debug.Log($"- Path: {activeScene.path}");
+        Debug.Log($"- Build Index: {activeScene.buildIndex}");
+        Debug.Log($"- Is Loaded: {activeScene.isLoaded}");
+        Debug.Log($"- Root Objects Count: {activeScene.rootCount}");
+        
+        // シーン内のルートオブジェクトを表示
+        GameObject[] rootObjects = activeScene.GetRootGameObjects();
+        Debug.Log($"Root Objects ({rootObjects.Length}):");
+        foreach (GameObject obj in rootObjects)
+        {
+            Debug.Log($"- {obj.name}");
+        }
+        
+        // 全シーンのリストを表示
+        int sceneCount = SceneManager.sceneCount;
+        Debug.Log($"Total Scenes Loaded: {sceneCount}");
+        for (int i = 0; i < sceneCount; i++)
+        {
+            Scene scene = SceneManager.GetSceneAt(i);
+            Debug.Log($"Scene {i}: {scene.name} (Path: {scene.path})");
+        }
+    }
+    
+    // 新しいシーンを作成
+    private static void CreateNewScene(string name)
+    {
+        if (EditorApplication.isPlaying)
+        {
+            Debug.LogWarning("Cannot create a new scene while in Play mode");
+            return;
+        }
+        
+        // 現在のシーンが保存されていない変更を持っているか確認
+        if (EditorSceneManager.GetActiveScene().isDirty)
+        {
+            bool save = EditorUtility.DisplayDialog(
+                "Save Current Scene",
+                "The current scene has unsaved changes. Do you want to save them before creating a new scene?",
+                "Save",
+                "Don't Save"
+            );
+            
+            if (save)
+            {
+                EditorSceneManager.SaveOpenScenes();
+            }
+        }
+        
+        // 新しいシーンを作成
+        EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+        
+        // シーンを名前を付けて保存
+        string scenePath = $"Assets/{name}.unity";
+        bool saved = EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), scenePath);
+        
+        if (saved)
+        {
+            Debug.Log($"Created and saved new scene: {name} at {scenePath}");
+        }
+        else
+        {
+            Debug.LogWarning($"Failed to save scene: {name}");
+        }
+    }
+    
+    // シーンをロード
+    private static void LoadScene(string name)
+    {
+        if (EditorApplication.isPlaying)
+        {
+            Debug.LogWarning("Cannot load a scene while in Play mode");
+            return;
+        }
+        
+        // 現在のシーンが保存されていない変更を持っているか確認
+        if (EditorSceneManager.GetActiveScene().isDirty)
+        {
+            bool save = EditorUtility.DisplayDialog(
+                "Save Current Scene",
+                "The current scene has unsaved changes. Do you want to save them before loading another scene?",
+                "Save",
+                "Don't Save"
+            );
+            
+            if (save)
+            {
+                EditorSceneManager.SaveOpenScenes();
+            }
+        }
+        
+        // シーンをロード
+        string scenePath = $"Assets/{name}.unity";
+        if (File.Exists(scenePath))
+        {
+            EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            Debug.Log($"Loaded scene: {name}");
+        }
+        else
+        {
+            Debug.LogError($"Scene file not found: {scenePath}");
         }
     }
     
@@ -733,7 +935,14 @@ public static partial class UnityMCPBridge
     
     private static void SetObjectTransform(JObject arguments)
     {
-        string name = arguments?["name"]?.ToString();
+        // 引数がnullの場合のエラー処理を追加
+        if (arguments == null)
+        {
+            Debug.LogWarning("No arguments provided for set_object_transform");
+            return;
+        }
+        
+        string name = arguments["name"]?.ToString();
         if (string.IsNullOrEmpty(name))
         {
             Debug.LogError("Object name is required for set_object_transform");
@@ -748,7 +957,7 @@ public static partial class UnityMCPBridge
         }
         
         // Set position if provided
-        if (arguments?["position"] is JArray posArray && posArray.Count >= 3)
+        if (arguments["position"] is JArray posArray && posArray.Count >= 3)
         {
             float x = posArray[0].Value<float>();
             float y = posArray[1].Value<float>();
@@ -757,7 +966,7 @@ public static partial class UnityMCPBridge
         }
         
         // Set rotation if provided
-        if (arguments?["rotation"] is JArray rotArray && rotArray.Count >= 3)
+        if (arguments["rotation"] is JArray rotArray && rotArray.Count >= 3)
         {
             float x = rotArray[0].Value<float>();
             float y = rotArray[1].Value<float>();
@@ -766,7 +975,7 @@ public static partial class UnityMCPBridge
         }
         
         // Set scale if provided
-        if (arguments?["scale"] is JArray scaleArray && scaleArray.Count >= 3)
+        if (arguments["scale"] is JArray scaleArray && scaleArray.Count >= 3)
         {
             float x = scaleArray[0].Value<float>();
             float y = scaleArray[1].Value<float>();
