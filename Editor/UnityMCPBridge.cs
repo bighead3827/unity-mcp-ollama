@@ -18,7 +18,7 @@ public static partial class UnityMCPBridge
     private static bool isRunning = false;
     private static readonly object lockObj = new object();
     private static Dictionary<string, (string commandJson, TaskCompletionSource<string> tcs)> commandQueue = new();
-    private static readonly int unityPort = 6400;  // Hardcoded port
+    private static readonly int unityPort = 6400;  // Hardcoded port for Unity
     private static readonly int mcpPort = 6500;    // MCP port for forwarding commands
     private static bool lastConnectionState = false; // For logging connection state changes only
     
@@ -28,8 +28,8 @@ public static partial class UnityMCPBridge
     // Add public property to expose running state
     public static bool IsRunning => isRunning;
     
-    // Python側がstdioモードでのみ動作するため、常にシミュレーションモードを使用
-    private static bool alwaysUseSimulation = true;
+    // Python側がカスタムTCPサーバーを使用するようになったので、シミュレーションを無効化
+    private static bool alwaysUseSimulation = false;
     
     // Simulated response handling
     public static bool HasSimulatedResponse(string messageId)
@@ -366,12 +366,20 @@ public static partial class UnityMCPBridge
         return isConnected;
     }
 
-    // Helper method to simulate responses (since TCP mode isn't working)
+    // Helper method to forward a command to the Python MCP TCP server
     private static async Task<string> ForwardToMCPServer(string commandType, JObject parameters)
     {
         try
         {
-            // Extract message ID if present
+            var command = new
+            {
+                type = commandType,
+                @params = parameters
+            };
+            
+            string commandJson = JsonConvert.SerializeObject(command);
+            
+            // Extract message ID if present for simulated responses
             string messageId = null;
             if (parameters != null && parameters["messageId"] != null)
             {
@@ -383,109 +391,336 @@ public static partial class UnityMCPBridge
                 messageId = Guid.NewGuid().ToString();
             }
             
-            // Pythonサーバーが実際にはTCPモードをサポートしていないため、常にシミュレーション応答を提供
-            Debug.Log("Using simulation mode for all requests because the Python server doesn't support TCP mode");
-            
-            // シミュレーション応答
-            if (commandType == "process_user_request")
+            // TCP接続でPythonサーバーと通信
+            using (var client = new TcpClient())
             {
-                string prompt = parameters?["prompt"]?.ToString() ?? "No prompt provided";
-                
-                Debug.Log($"Processing chat prompt in simulation mode: {prompt}");
-                
-                var simulatedResponse = new
+                // Try to connect to MCP server with timeout
+                var connectionTask = client.ConnectAsync("localhost", mcpPort);
+                if (await Task.WhenAny(connectionTask, Task.Delay(3000)) != connectionTask)
                 {
-                    status = "success",
-                    result = new
-                    {
-                        status = "success",
-                        message = "Request processed successfully (simulation mode)",
-                        llm_response = $"Ollamaのシミュレーション応答:\n\n「{prompt}」に対する回答です。\n\n現在、PythonサーバーはTCPモードをサポートしていないため、シミュレーションモードで動作しています。\n\nPython側のサーバーはstdioトランスポートで実行されているため、直接TCPで通信できません。\n\n実際の実装では、以下のいずれかの方法で回避できます：\n1. PythonサーバーをTCPサポート付きで再実装する\n2. シミュレーションモードを完全に活用する\n3. 代替のプロトコルを検討する",
-                        commands_executed = 0,
-                        results = new object[] { }
-                    }
-                };
-                
-                string responseJson = JsonConvert.SerializeObject(simulatedResponse);
-                
-                if (!string.IsNullOrEmpty(messageId))
-                {
-                    simulatedResponses[messageId] = responseJson;
+                    throw new TimeoutException("Connection to MCP server timed out");
                 }
-                
-                return responseJson;
-            }
-            else if (commandType == "get_ollama_status")
-            {
-                var statusResponse = new
+
+                // 接続成功の場合のみこのコードが実行される
+                using (var stream = client.GetStream())
                 {
-                    status = "success",
-                    result = new
+                    // Send the command
+                    byte[] commandBytes = System.Text.Encoding.UTF8.GetBytes(commandJson);
+                    await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
+                    
+                    // Read response with timeout
+                    byte[] buffer = new byte[32768]; // Large buffer
+                    var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
+                    if (await Task.WhenAny(readTask, Task.Delay(30000)) != readTask)
                     {
-                        status = "simulated",
-                        model = "gemma3:12b (simulated)",
-                        host = "localhost",
-                        port = 11434
+                        throw new TimeoutException("Timeout waiting for MCP server response");
                     }
-                };
-                return JsonConvert.SerializeObject(statusResponse);
-            }
-            else if (commandType == "configure_ollama")
-            {
-                string host = parameters?["host"]?.ToString() ?? "localhost";
-                int port = parameters?["port"]?.ToObject<int>() ?? 11434;
-                string model = parameters?["model"]?.ToString() ?? "gemma3:12b";
-                float temperature = parameters?["temperature"]?.ToObject<float>() ?? 0.7f;
-                
-                var configResponse = new
-                {
-                    status = "success",
-                    result = new
+                    
+                    int bytesRead = await readTask;
+                    string response = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                    
+                    // Store the response for later retrieval by the UI
+                    if (!string.IsNullOrEmpty(messageId))
                     {
-                        status = "simulated",
-                        message = "Configuration update simulated successfully",
-                        config = new
-                        {
-                            host = host,
-                            port = port,
-                            model = model,
-                            temperature = temperature
-                        }
+                        simulatedResponses[messageId] = response;
                     }
-                };
-                return JsonConvert.SerializeObject(configResponse);
-            }
-            else
-            {
-                // その他のコマンドの汎用的なシミュレーション応答
-                var genericResponse = new
-                {
-                    status = "success",
-                    result = new
-                    {
-                        message = $"Command {commandType} was simulated",
-                        details = "Using simulation mode because the Python server doesn't support TCP connections"
-                    }
-                };
-                return JsonConvert.SerializeObject(genericResponse);
+                    
+                    return response;
+                }
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error in ForwardToMCPServer: {ex.Message}");
+            Debug.LogError($"Error forwarding command to MCP server: {ex.Message}");
             
-            var errorResponse = new
+            // TCP接続に失敗した場合のみシミュレーションモードで応答を返す
+            if (alwaysUseSimulation || ex is SocketException || ex is TimeoutException)
             {
-                status = "error",
-                result = new
+                Debug.LogWarning("Falling back to simulation mode due to connection error");
+                
+                if (commandType == "process_user_request")
+                {
+                    string prompt = parameters?["prompt"]?.ToString() ?? "No prompt provided";
+                    
+                    Debug.Log($"Simulating response for chat prompt: {prompt}");
+                    
+                    var simulatedResponse = new
+                    {
+                        status = "error",
+                        result = new
+                        {
+                            status = "error",
+                            message = $"Connection error: {ex.Message}",
+                            llm_response = $"TCP接続エラーが発生しました：{ex.Message}\n\nPythonのTCPサーバーが起動していることを確認してください。\n\ntcp_server.pyを起動するには以下のコマンドを実行してください：\npython tcp_server.py",
+                            commands_executed = 0,
+                            results = new object[] { }
+                        }
+                    };
+                    
+                    string responseJson = JsonConvert.SerializeObject(simulatedResponse);
+                    
+                    if (!string.IsNullOrEmpty(messageId))
+                    {
+                        simulatedResponses[messageId] = responseJson;
+                    }
+                    
+                    return responseJson;
+                }
+                else
+                {
+                    // その他のコマンドの場合のエラー応答
+                    var errorResponse = new
+                    {
+                        status = "error",
+                        result = new
+                        {
+                            status = "error",
+                            message = $"Failed to communicate with MCP server: {ex.Message}",
+                            details = "Please make sure the Python TCP server is running (python tcp_server.py)"
+                        }
+                    };
+                    
+                    return JsonConvert.SerializeObject(errorResponse);
+                }
+            }
+            else
+            {
+                // その他のエラーの場合は通常のエラーレスポンスを返す
+                var errorResponse = new
                 {
                     status = "error",
-                    message = $"Failed to process command: {ex.Message}",
-                    llm_response = "Sorry, there was an error processing your request."
+                    result = new
+                    {
+                        status = "error",
+                        message = $"Failed to process command: {ex.Message}",
+                        llm_response = "Sorry, there was an error processing your request."
+                    }
+                };
+                
+                return JsonConvert.SerializeObject(errorResponse);
+            }
+        }
+    }
+
+    // Process commands extracted from llm_response
+    private static void ProcessExtractedCommands(JArray commands)
+    {
+        if (commands == null || !commands.Any()) return;
+        
+        Debug.Log($"Processing {commands.Count} extracted commands");
+        
+        foreach (JObject cmd in commands)
+        {
+            try
+            {
+                string function = cmd["function"]?.ToString();
+                JObject arguments = cmd["arguments"] as JObject;
+                
+                if (string.IsNullOrEmpty(function))
+                {
+                    Debug.LogWarning("Skipping command with empty function name");
+                    continue;
                 }
-            };
+                
+                Debug.Log($"Executing Unity command: {function}");
+                
+                // ここでUnityコマンドを実行
+                // 例: create_object, set_transform, etc.
+                switch (function.ToLower())
+                {
+                    case "create_object":
+                        string objectName = arguments?["name"]?.ToString() ?? "NewObject";
+                        string objectType = arguments?["type"]?.ToString() ?? "CUBE";
+                        CreateObject(objectName, objectType, arguments);
+                        break;
+                        
+                    case "set_object_transform":
+                        SetObjectTransform(arguments);
+                        break;
+                        
+                    case "delete_object":
+                        DeleteObject(arguments?["name"]?.ToString());
+                        break;
+                        
+                    case "editor_action":
+                        EditorAction(arguments?["action"]?.ToString());
+                        break;
+                        
+                    default:
+                        Debug.LogWarning($"Unimplemented command: {function}");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error executing command {cmd["function"]}: {ex.Message}");
+            }
+        }
+    }
+    
+    // Simple Unity command implementations
+    private static void CreateObject(string name, string type, JObject arguments)
+    {
+        GameObject obj = null;
+        
+        // Normalize type name to uppercase for matching
+        type = type?.ToUpper() ?? "CUBE";
+        
+        switch (type)
+        {
+            case "CUBE":
+                obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                break;
+            case "SPHERE":
+                obj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                break;
+            case "CAPSULE":
+                obj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                break;
+            case "CYLINDER":
+                obj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                break;
+            case "PLANE":
+                obj = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                break;
+            case "QUAD":
+                obj = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                break;
+            case "EMPTY":
+                obj = new GameObject();
+                break;
+            default:
+                obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Debug.LogWarning($"Unknown primitive type: {type}. Created a cube instead.");
+                break;
+        }
+        
+        if (obj != null)
+        {
+            obj.name = name;
             
-            return JsonConvert.SerializeObject(errorResponse);
+            // Set position if provided
+            if (arguments?["position"] is JArray posArray && posArray.Count >= 3)
+            {
+                float x = posArray[0].Value<float>();
+                float y = posArray[1].Value<float>();
+                float z = posArray[2].Value<float>();
+                obj.transform.position = new Vector3(x, y, z);
+            }
+            
+            // Set scale if provided
+            if (arguments?["scale"] is JArray scaleArray && scaleArray.Count >= 3)
+            {
+                float x = scaleArray[0].Value<float>();
+                float y = scaleArray[1].Value<float>();
+                float z = scaleArray[2].Value<float>();
+                obj.transform.localScale = new Vector3(x, y, z);
+            }
+            
+            Debug.Log($"Created {type} object named '{name}'");
+        }
+    }
+    
+    private static void SetObjectTransform(JObject arguments)
+    {
+        string name = arguments?["name"]?.ToString();
+        if (string.IsNullOrEmpty(name))
+        {
+            Debug.LogError("Object name is required for set_object_transform");
+            return;
+        }
+        
+        GameObject obj = GameObject.Find(name);
+        if (obj == null)
+        {
+            Debug.LogError($"Object '{name}' not found");
+            return;
+        }
+        
+        // Set position if provided
+        if (arguments?["position"] is JArray posArray && posArray.Count >= 3)
+        {
+            float x = posArray[0].Value<float>();
+            float y = posArray[1].Value<float>();
+            float z = posArray[2].Value<float>();
+            obj.transform.position = new Vector3(x, y, z);
+        }
+        
+        // Set rotation if provided
+        if (arguments?["rotation"] is JArray rotArray && rotArray.Count >= 3)
+        {
+            float x = rotArray[0].Value<float>();
+            float y = rotArray[1].Value<float>();
+            float z = rotArray[2].Value<float>();
+            obj.transform.eulerAngles = new Vector3(x, y, z);
+        }
+        
+        // Set scale if provided
+        if (arguments?["scale"] is JArray scaleArray && scaleArray.Count >= 3)
+        {
+            float x = scaleArray[0].Value<float>();
+            float y = scaleArray[1].Value<float>();
+            float z = scaleArray[2].Value<float>();
+            obj.transform.localScale = new Vector3(x, y, z);
+        }
+        
+        Debug.Log($"Updated transform for object '{name}'");
+    }
+    
+    private static void DeleteObject(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            Debug.LogError("Object name is required for delete_object");
+            return;
+        }
+        
+        GameObject obj = GameObject.Find(name);
+        if (obj == null)
+        {
+            Debug.LogError($"Object '{name}' not found");
+            return;
+        }
+        
+        UnityEngine.Object.DestroyImmediate(obj);
+        Debug.Log($"Deleted object '{name}'");
+    }
+    
+    private static void EditorAction(string action)
+    {
+        if (string.IsNullOrEmpty(action))
+        {
+            Debug.LogError("Action is required for editor_action");
+            return;
+        }
+        
+        action = action.ToUpper();
+        
+        switch (action)
+        {
+            case "PLAY":
+                EditorApplication.isPlaying = true;
+                Debug.Log("Started Play mode");
+                break;
+                
+            case "STOP":
+                EditorApplication.isPlaying = false;
+                Debug.Log("Stopped Play mode");
+                break;
+                
+            case "PAUSE":
+                EditorApplication.isPaused = !EditorApplication.isPaused;
+                Debug.Log($"Play mode paused: {EditorApplication.isPaused}");
+                break;
+                
+            case "SAVE":
+                AssetDatabase.SaveAssets();
+                Debug.Log("Saved assets");
+                break;
+                
+            default:
+                Debug.LogWarning($"Unknown editor action: {action}");
+                break;
         }
     }
 
@@ -552,15 +787,44 @@ public static partial class UnityMCPBridge
                     EditorApplication.delayCall += async () => {
                         try
                         {
-                            // シミュレーションモードを使用して応答を生成
+                            // TCP経由でPythonサーバーにリクエストを転送
                             string taskResponse = await ForwardToMCPServer("process_user_request", parameters);
+                            
+                            // Parse the response to extract commands if any
+                            try
+                            {
+                                JObject responseObj = JObject.Parse(taskResponse);
+                                
+                                // If we have executable commands, process them
+                                JObject resultObj = responseObj["result"] as JObject;
+                                JArray commands = resultObj?["commands"] as JArray;
+                                
+                                if (commands != null && commands.Count > 0)
+                                {
+                                    // 新しいスレッドでUnityコマンドを実行
+                                    EditorApplication.delayCall += () => {
+                                        try
+                                        {
+                                            ProcessExtractedCommands(commands);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Debug.LogError($"Error processing extracted commands: {ex.Message}");
+                                        }
+                                    };
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.LogWarning($"Error parsing response for command extraction: {ex.Message}");
+                            }
                             
                             // Log the taskResponse for debugging (but limit the length)
                             int maxLogLength = 200;
                             string logText = taskResponse.Length > maxLogLength ? 
                                 taskResponse.Substring(0, maxLogLength) + "..." : 
                                 taskResponse;
-                            Debug.Log($"Simulated response: {logText}");
+                            Debug.Log($"MCP server response: {logText}");
                             
                             // Continue processing in the UI if needed
                         }
@@ -590,13 +854,13 @@ public static partial class UnityMCPBridge
                 }
             }
             
-            // Handle get_ollama_status command - now use simulation mode
+            // Handle get_ollama_status command - forward to TCP server
             if (commandType == "get_ollama_status")
             {
                 try 
                 {
                     Task<string> forwardTask = ForwardToMCPServer("get_ollama_status", parameters);
-                    forwardTask.Wait(3000); // 3秒のタイムアウトを設定
+                    forwardTask.Wait(5000); // 5秒のタイムアウトを設定
                     
                     if (forwardTask.IsCompleted)
                     {
@@ -611,30 +875,28 @@ public static partial class UnityMCPBridge
                 {
                     Debug.LogWarning($"Error forwarding get_ollama_status: {ex.Message}");
                     
-                    // シミュレーション応答を返す
+                    // エラー応答を返す
                     var statusResponse = new
                     {
-                        status = "success",
+                        status = "error",
                         result = new
                         {
-                            status = "simulated",
-                            model = "gemma3:12b (simulated)",
-                            host = "localhost",
-                            port = 11434,
-                            message = "Simulation mode active"
+                            status = "error",
+                            message = $"Error checking Ollama status: {ex.Message}",
+                            details = "Please make sure the Python TCP server is running (python tcp_server.py)"
                         }
                     };
                     return JsonConvert.SerializeObject(statusResponse);
                 }
             }
             
-            // Handle configure_ollama command - now use simulation mode
+            // Handle configure_ollama command - forward to TCP server
             if (commandType == "configure_ollama")
             {
                 try 
                 {
                     Task<string> forwardTask = ForwardToMCPServer("configure_ollama", parameters);
-                    forwardTask.Wait(3000); // 3秒のタイムアウトを設定
+                    forwardTask.Wait(5000); // 5秒のタイムアウトを設定
                     
                     if (forwardTask.IsCompleted)
                     {
@@ -649,26 +911,15 @@ public static partial class UnityMCPBridge
                 {
                     Debug.LogWarning($"Error forwarding configure_ollama: {ex.Message}");
                     
-                    // シミュレーション応答を返す
-                    string host = parameters?["host"]?.ToString() ?? "localhost";
-                    int port = parameters?["port"]?.ToObject<int>() ?? 11434;
-                    string model = parameters?["model"]?.ToString() ?? "gemma3:12b";
-                    float temperature = parameters?["temperature"]?.ToObject<float>() ?? 0.7f;
-                    
+                    // エラー応答を返す
                     var configResponse = new
                     {
-                        status = "success",
+                        status = "error",
                         result = new
                         {
-                            status = "simulated",
-                            message = "Configuration update simulated successfully",
-                            config = new
-                            {
-                                host = host,
-                                port = port,
-                                model = model,
-                                temperature = temperature
-                            }
+                            status = "error",
+                            message = $"Error configuring Ollama: {ex.Message}",
+                            details = "Please make sure the Python TCP server is running (python tcp_server.py)"
                         }
                     };
                     return JsonConvert.SerializeObject(configResponse);
@@ -681,7 +932,7 @@ public static partial class UnityMCPBridge
                 status = "success",
                 result = new
                 {
-                    message = $"Command {commandType} was received",
+                    message = $"Command {commandType} was received but not implemented",
                     commandType = commandType,
                     paramsCount = parameters?.Count ?? 0
                 }
