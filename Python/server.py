@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional
 import sys
 import os
+import threading
 from config import config
 from tools import register_all_tools
 from unity_connection import get_unity_connection, UnityConnection
@@ -27,6 +28,19 @@ logger.setLevel(getattr(logging, config.log_level))
 # Global connection states
 _unity_connection: Optional[UnityConnection] = None
 _ollama_connection: Optional[OllamaConnection] = None
+
+# 导入TCP服务器
+from tcp_server import MCPTCPServer
+
+async def run_tcp_server():
+    """运行TCP服务器"""
+    server = MCPTCPServer()
+    logger.info(f"Starting TCP server on {server.host}:{server.port}")
+    await server.start()
+
+def start_tcp_server():
+    """在新线程中启动TCP服务器"""
+    asyncio.run(run_tcp_server())
 
 @asynccontextmanager
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
@@ -330,12 +344,15 @@ MCP_SERVER_PORT = 6500
 
 # Run the server
 if __name__ == "__main__":
+    # 在新线程中启动TCP服务器
+    tcp_thread = threading.Thread(target=start_tcp_server, daemon=True)
+    tcp_thread.start()
+    
     logger.info("Starting MCP server using stdio transport")
     try:
-        # FastMCPライブラリが'tcp'または'port'パラメータをサポートしていないようなので、
-        # stdio トランスポートだけを使用します
+        # 使用stdio模式运行主服务器
         mcp.run(transport='stdio')
     except Exception as e:
         logger.error(f"Error starting MCP server: {e}")
         logger.info("Falling back to default mode")
-        mcp.run()  # パラメータなしでデフォルト動作
+        mcp.run()  # 如果失败，使用默认模式
