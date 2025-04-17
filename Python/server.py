@@ -4,17 +4,25 @@ import asyncio
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional
+import sys
+import os
 from config import config
 from tools import register_all_tools
 from unity_connection import get_unity_connection, UnityConnection
 from ollama_connection import get_ollama_connection, OllamaConnection
 
 # Configure logging using settings from config
+log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'unity_mcp.log')
 logging.basicConfig(
     level=getattr(logging, config.log_level),
-    format=config.log_format
+    format=config.log_format,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(log_file)
+    ]
 )
 logger = logging.getLogger("UnityMCP")
+logger.setLevel(getattr(logging, config.log_level))
 
 # Global connection states
 _unity_connection: Optional[UnityConnection] = None

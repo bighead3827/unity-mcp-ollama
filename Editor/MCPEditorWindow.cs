@@ -107,7 +107,7 @@ public class MCPEditorWindow : EditorWindow
     private int ollamaPort = 11434;
     private string ollamaModel = "gemma3:12b";
     private float ollamaTemperature = 0.7f;
-    private string[] availableModels = new string[] { "deepseek-r:14b", "gemma3:12b" };
+    private string[] availableModels = new string[] { "deepseek-r1:14b", "gemma3:12b" };
     private int selectedModelIndex = 1; // Default to gemma3:12b
 
     // Chat interface
@@ -719,7 +719,7 @@ public class ManualConfigWindow : EditorWindow
 
         EditorGUILayout.LabelField("1. Ensure Ollama is installed and running", EditorStyles.wordWrappedLabel);
         EditorGUILayout.LabelField("2. Pull one of the supported models:", EditorStyles.wordWrappedLabel);
-        EditorGUILayout.LabelField("   - deepseek-r:14b", EditorStyles.wordWrappedLabel);
+        EditorGUILayout.LabelField("   - deepseek-r1:14b", EditorStyles.wordWrappedLabel);
         EditorGUILayout.LabelField("   - gemma3:12b", EditorStyles.wordWrappedLabel);
         EditorGUILayout.Space(5);
 
