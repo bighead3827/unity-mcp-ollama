@@ -5,33 +5,33 @@ using UnityEditor;
 using Newtonsoft.Json.Linq;
 
 /// <summary>
-/// Unity MCPリポジトリで不足しているオブジェクト関連コマンドの実装
-/// </summary>
+    /// 实现Unity MCP仓库中缺失的对象相关命令
+    /// </summary>
 public static class ObjectCommands
 {
     /// <summary>
-    /// 名前に基づいてオブジェクトを検索する
+    /// 根据名称搜索对象
     /// </summary>
-    /// <param name="name">検索する名前</param>
-    /// <returns>見つかったオブジェクトのリスト</returns>
+    /// <param name="name">要搜索的名称</param>
+    /// <returns>找到的对象列表</returns>
     public static GameObject[] FindObjectsByName(string name)
     {
-        // シーン内の全GameObjectを検索
-        var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>(true);
+        // 搜索场景内的所有GameObject
+        var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
         
-        // 名前が指定されていない場合はすべてのオブジェクトを返す
+        // 如果未指定名称，则返回所有对象
         if (string.IsNullOrEmpty(name))
             return allObjects;
         
-        // 名前が一致または含まれるオブジェクトをフィルタリング
+        // 过滤名称匹配或包含指定名称的对象
         return allObjects.Where(obj => obj.name.Contains(name)).ToArray();
     }
 
     /// <summary>
-    /// オブジェクトの位置を設定する
+    /// 设置对象的位置
     /// </summary>
-    /// <param name="targetObject">対象オブジェクト</param>
-    /// <param name="position">新しい位置 (Vector3)</param>
+    /// <param name="targetObject">目标对象</param>
+    /// <param name="position">新的位置 (Vector3)</param>
     public static void SetPosition(GameObject targetObject, Vector3 position)
     {
         if (targetObject != null)
@@ -41,10 +41,10 @@ public static class ObjectCommands
     }
 
     /// <summary>
-    /// オブジェクトの回転を設定する
+    /// 设置对象的旋转
     /// </summary>
-    /// <param name="targetObject">対象オブジェクト</param>
-    /// <param name="rotation">新しい回転 (Euler angles)</param>
+    /// <param name="targetObject">目标对象</param>
+    /// <param name="rotation">新的旋转 (欧拉角)</param>
     public static void SetRotation(GameObject targetObject, Vector3 rotation)
     {
         if (targetObject != null)
@@ -54,10 +54,10 @@ public static class ObjectCommands
     }
 
     /// <summary>
-    /// オブジェクトのスケールを設定する
+    /// 设置对象的缩放
     /// </summary>
-    /// <param name="targetObject">対象オブジェクト</param>
-    /// <param name="scale">新しいスケール</param>
+    /// <param name="targetObject">目标对象</param>
+    /// <param name="scale">新的缩放</param>
     public static void SetScale(GameObject targetObject, Vector3 scale)
     {
         if (targetObject != null)
@@ -67,12 +67,12 @@ public static class ObjectCommands
     }
 
     /// <summary>
-    /// オブジェクトのトランスフォーム（位置、回転、スケール）を設定する
+    /// 设置对象的变换（位置、旋转、缩放）
     /// </summary>
-    /// <param name="targetObject">対象オブジェクト</param>
-    /// <param name="position">新しい位置（オプション）</param>
-    /// <param name="rotation">新しい回転（オプション）</param>
-    /// <param name="scale">新しいスケール（オプション）</param>
+    /// <param name="targetObject">目标对象</param>
+    /// <param name="position">新的位置（可选）</param>
+    /// <param name="rotation">新的旋转（可选）</param>
+    /// <param name="scale">新的缩放（可选）</param>
     public static void SetTransform(GameObject targetObject, Vector3? position = null, Vector3? rotation = null, Vector3? scale = null)
     {
         if (targetObject == null)
@@ -108,9 +108,9 @@ public static class ObjectCommands
     }
 
     /// <summary>
-    /// Vector3配列からVector3を作成するヘルパーメソッド
+    /// 从Vector3数组创建Vector3的辅助方法
     /// </summary>
-    /// <param name="values">値の配列 [x, y, z]</param>
+    /// <param name="values">值的数组 [x, y, z]</param>
     /// <returns>Vector3</returns>
     public static Vector3 ParseVector3(float[] values)
     {
@@ -124,9 +124,9 @@ public static class ObjectCommands
     }
 
     /// <summary>
-    /// JArrayからVector3を作成するヘルパーメソッド
+    /// 从JArray创建Vector3的辅助方法
     /// </summary>
-    /// <param name="jArray">JArray形式の値</param>
+    /// <param name="jArray">JArray格式的值</param>
     /// <returns>Vector3</returns>
     public static Vector3 ParseVector3(JArray jArray)
     {

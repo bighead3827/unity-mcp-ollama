@@ -32,7 +32,7 @@ class ServerConfig:
     # Ollama settings
     ollama_host: str = "localhost"
     ollama_port: int = 11434
-    ollama_model: str = "deepseek-r1:14b"  # Default model
+    ollama_model: str = "qwen2:0.5b"  # Default model
     ollama_timeout: float = 120.0  # Longer timeout for LLM operations
     ollama_temperature: float = 0.7
     ollama_system_prompt: str = """You are a Unity development assistant that helps control the Unity Editor via commands.

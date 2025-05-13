@@ -10,41 +10,6 @@ using System.Threading.Tasks;
 using System.Text;
 using System.Collections.Generic;
 
-public class DefaultServerConfig : ServerConfig
-{
-    public new string unityHost = "localhost";
-    public new int unityPort = 6400;
-    public new int mcpPort = 6500;
-    public new float connectionTimeout = 15.0f;
-    public new int bufferSize = 32768;
-    public new string logLevel = "INFO";
-    public new string logFormat = "%(asctime)s - %(name)s - %(levelname)s - %(message)s";
-    public new int maxRetries = 3;
-    public new float retryDelay = 1.0f;
-    
-    // Ollama specific defaults
-    public string ollamaHost = "localhost";
-    public int ollamaPort = 11434;
-    public string ollamaModel = "gemma3:12b";
-    public float ollamaTemperature = 0.7f;
-}
-
-[Serializable]
-public class OllamaConfig
-{
-    [JsonProperty("ollama_host")]
-    public string ollamaHost = "localhost";
-    
-    [JsonProperty("ollama_port")]
-    public int ollamaPort = 11434;
-    
-    [JsonProperty("ollama_model")]
-    public string ollamaModel = "gemma3:12b";
-    
-    [JsonProperty("ollama_temperature")]
-    public float ollamaTemperature = 0.7f;
-}
-
 [Serializable]
 public class ServerConfig
 {
@@ -89,6 +54,42 @@ public class ServerConfig
     public float ollamaTemperature;
 }
 
+public class DefaultServerConfig : ServerConfig
+{
+    public new string unityHost = "localhost";
+    public new int unityPort = 6400;
+    public new int mcpPort = 6500;
+    public new float connectionTimeout = 15.0f;
+    public new int bufferSize = 32768;
+    public new string logLevel = "INFO";
+    public new string logFormat = "%(asctime)s - %(name)s - %(levelname)s - %(message)s";
+    public new int maxRetries = 3;
+    public new float retryDelay = 1.0f;
+    
+    // Ollama specific defaults
+    public string ollamaHost = "localhost";
+    public int ollamaPort = 11434;
+    public string ollamaModel = "gemma3:12b";
+    public float ollamaTemperature = 0.7f;
+}
+
+[Serializable]
+public class OllamaConfig
+{
+    [JsonProperty("ollama_host")]
+    public string ollamaHost = "localhost";
+    
+    [JsonProperty("ollama_port")]
+    public int ollamaPort = 11434;
+    
+    [JsonProperty("ollama_model")]
+    public string ollamaModel = "gemma3:12b";
+    
+    [JsonProperty("ollama_temperature")]
+    public float ollamaTemperature = 0.7f;
+}
+
+
 public class MCPEditorWindow : EditorWindow
 {
     private bool isUnityBridgeRunning = false;
@@ -107,7 +108,7 @@ public class MCPEditorWindow : EditorWindow
     private int ollamaPort = 11434;
     private string ollamaModel = "gemma3:12b";
     private float ollamaTemperature = 0.7f;
-    private string[] availableModels = new string[] { "deepseek-r1:14b", "gemma3:12b" };
+    private string[] availableModels = new string[] { "deepseek-r1:14b", "gemma3:12b", "gemma2:9b", "qwen2:0.5b" };
     private int selectedModelIndex = 1; // Default to gemma3:12b
 
     // Chat interface
@@ -226,6 +227,9 @@ public class MCPEditorWindow : EditorWindow
 
     private async void CheckPythonServerConnection()
     {
+        if (!isUnityBridgeRunning){
+            return;
+        }
         bool wasConnected = isPythonServerConnected;
         isPythonServerConnected = await UnityMCPBridge.CheckPythonServerConnection();
         
@@ -317,7 +321,11 @@ public class MCPEditorWindow : EditorWindow
         {
             using (var client = new TcpClient())
             {
-                await client.ConnectAsync("localhost", unityPort);
+                // await client.ConnectAsync("localhost", unityPort);
+                if (client.Connected == false)
+                {
+                    client.Connect("localhost", unityPort);
+                }
                 using (NetworkStream stream = client.GetStream())
                 {
                     byte[] commandBytes = Encoding.UTF8.GetBytes(commandJson);
@@ -341,9 +349,9 @@ public class MCPEditorWindow : EditorWindow
     {
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
         EditorGUILayout.LabelField("MCP Editor with Ollama", EditorStyles.boldLabel);
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
 
         // Python Server Status Section
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -360,7 +368,7 @@ public class MCPEditorWindow : EditorWindow
         EditorGUILayout.HelpBox("Start the Python server using command: 'python -m venv venv && source venv/bin/activate && pip install -e . && python server.py' in the Python directory", MessageType.Info);
         EditorGUILayout.EndVertical();
 
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
 
         // Unity Bridge Section
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -374,14 +382,14 @@ public class MCPEditorWindow : EditorWindow
         }
         EditorGUILayout.EndVertical();
 
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
 
         // Ollama Configuration Section
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
         EditorGUILayout.LabelField("Ollama Configuration", EditorStyles.boldLabel);
         EditorGUILayout.LabelField($"Status: {ollamaStatusMessage}");
         
-        EditorGUILayout.Space(5);
+        EditorGUILayout.Space();
         
         EditorGUILayout.LabelField("Host:");
         ollamaHost = EditorGUILayout.TextField(ollamaHost);
@@ -389,7 +397,7 @@ public class MCPEditorWindow : EditorWindow
         EditorGUILayout.LabelField("Port:");
         ollamaPort = EditorGUILayout.IntField(ollamaPort);
         
-        EditorGUILayout.LabelField("Model:");
+        EditorGUILayout.LabelField("Model:gemma2:9b mcp工程config.py配置");
         selectedModelIndex = EditorGUILayout.Popup(selectedModelIndex, availableModels);
         ollamaModel = availableModels[selectedModelIndex];
         
@@ -408,7 +416,7 @@ public class MCPEditorWindow : EditorWindow
         
         EditorGUILayout.EndVertical();
 
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
         
         // Chat Interface Toggle
         if (GUILayout.Button(showChatInterface ? "Hide Chat Interface" : "Show Chat Interface"))
@@ -428,7 +436,7 @@ public class MCPEditorWindow : EditorWindow
             {
                 EditorGUILayout.LabelField($"<b>{message.sender}:</b>", message.sender == "You" ? userMessageStyle : assistantMessageStyle);
                 EditorGUILayout.LabelField(message.content, message.sender == "You" ? userMessageStyle : assistantMessageStyle);
-                EditorGUILayout.Space(5);
+                EditorGUILayout.Space();
             }
             EditorGUILayout.EndScrollView();
             
@@ -447,7 +455,7 @@ public class MCPEditorWindow : EditorWindow
             EditorGUILayout.EndVertical();
         }
 
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
 
         EditorGUILayout.EndScrollView();
     }
@@ -492,12 +500,12 @@ public class MCPEditorWindow : EditorWindow
                     }
                 }
                 
-                UnityEngine.Debug.Log("Loaded Ollama configuration from file");
+                // UnityEngine.Debug.Log("Loaded Ollama configuration from file");
             }
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogError($"Error loading Ollama configuration: {e.Message}");
+            // UnityEngine.Debug.LogError($"Error loading Ollama configuration: {e.Message}");
         }
     }
 
@@ -533,7 +541,7 @@ public class MCPEditorWindow : EditorWindow
     private string GetLocalConfigPath()
     {
         // Store in the Unity project's temp folder
-        string configDir = Path.Combine(Application.dataPath, "..", "Temp", "OllamaConfig");
+        string configDir = Path.Combine(Application.dataPath, "Editor", "GDK", "UnityMCPOllama", "OllamaConfig");
         Directory.CreateDirectory(configDir);
         return Path.Combine(configDir, "ollama_config.json");
     }
@@ -709,19 +717,20 @@ public class ManualConfigWindow : EditorWindow
         scrollPos = EditorGUILayout.BeginScrollView(scrollPos);
 
         // Header
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
         EditorGUILayout.LabelField("Ollama Configuration", EditorStyles.boldLabel);
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
 
         // Instructions
         EditorGUILayout.LabelField("Please follow these steps to configure Ollama:", EditorStyles.boldLabel);
-        EditorGUILayout.Space(5);
+        EditorGUILayout.Space();
 
         EditorGUILayout.LabelField("1. Ensure Ollama is installed and running", EditorStyles.wordWrappedLabel);
         EditorGUILayout.LabelField("2. Pull one of the supported models:", EditorStyles.wordWrappedLabel);
         EditorGUILayout.LabelField("   - deepseek-r1:14b", EditorStyles.wordWrappedLabel);
         EditorGUILayout.LabelField("   - gemma3:12b", EditorStyles.wordWrappedLabel);
-        EditorGUILayout.Space(5);
+        EditorGUILayout.LabelField("   - gemma2:9b", EditorStyles.wordWrappedLabel);
+        EditorGUILayout.Space();
 
         EditorGUILayout.LabelField("3. Configuration file location:", EditorStyles.wordWrappedLabel);
 
@@ -743,11 +752,11 @@ public class ManualConfigWindow : EditorWindow
             EditorGUILayout.LabelField("Path copied to clipboard!", EditorStyles.miniLabel);
         }
 
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
 
         // JSON configuration
         EditorGUILayout.LabelField("4. Sample configuration:", EditorStyles.wordWrappedLabel);
-        EditorGUILayout.Space(5);
+        EditorGUILayout.Space();
 
         // JSON text area with copy button
         GUIStyle textAreaStyle = new GUIStyle(EditorStyles.textArea)
@@ -772,7 +781,7 @@ public class ManualConfigWindow : EditorWindow
             EditorGUILayout.LabelField("JSON copied to clipboard!", EditorStyles.miniLabel);
         }
 
-        EditorGUILayout.Space(10);
+        EditorGUILayout.Space();
 
         // Additional note
         EditorGUILayout.HelpBox("After configuring, restart the server to apply the changes.", MessageType.Info);

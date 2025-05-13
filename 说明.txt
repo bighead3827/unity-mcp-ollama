@@ -1,0 +1,4 @@
+1.开启命令行 ollama serve
+2. 启动unity start bridge
+3.开启命令行 venv\Scripts\activate开一个虚拟环境
+4.在虚拟环境中进入python目录 Python server.py

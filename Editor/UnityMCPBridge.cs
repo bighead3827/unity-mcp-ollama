@@ -6,39 +6,58 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
-using UnityEditor.SceneManagement; // 追加: シーン操作に必要
+using UnityEditor.SceneManagement; // 追加: 场景操作所需
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.IO;
 
+/// <summary>
+/// Unity MCP Bridge 类
+/// 这是一个Unity编辑器工具类，用于在Unity编辑器和Python MCP服务器之间建立通信桥梁。
+/// 主要功能：
+/// 1. 建立TCP服务器监听来自Python的连接
+/// 2. 处理和转发命令到Python服务器
+/// 3. 执行Unity场景和游戏对象操作
+/// 4. 提供实时通信和命令执行功能
+/// </summary>
 [InitializeOnLoad]
 public static partial class UnityMCPBridge
 {
-    private static TcpListener listener;
-    private static bool isRunning = false;
-    private static readonly object lockObj = new object();
-    private static Dictionary<string, (string commandJson, TaskCompletionSource<string> tcs)> commandQueue = new();
-    private static readonly int unityPort = 6400;  // Hardcoded port for Unity
-    private static readonly int mcpPort = 6500;    // MCP port for forwarding commands
-    private static bool lastConnectionState = false; // For logging connection state changes only
+    // TCP服务器相关字段
+    private static TcpListener listener;                 // TCP监听器
+    private static bool isRunning = false;              // 服务器运行状态
+    private static readonly object lockObj = new object(); // 线程同步锁
+    private static Dictionary<string, (string commandJson, TaskCompletionSource<string> tcs)> commandQueue = new Dictionary<string, (string commandJson, TaskCompletionSource<string> tcs)>(); // 命令队列
+    private static readonly int unityPort = 6400;       // Unity服务器端口
+    private static readonly int mcpPort = 6500;         // MCP服务器端口
+    private static bool lastConnectionState = false;     // 上次连接状态（用于只记录状态变化）
     
-    // Simulated response storage
+    // 模拟响应存储
     private static Dictionary<string, string> simulatedResponses = new Dictionary<string, string>();
 
-    // Add public property to expose running state
+    // 公开运行状态属性
     public static bool IsRunning => isRunning;
     
-    // Python側がカスタムTCPサーバーを使用するようになったので、シミュレーションを無効化
+    // 是否始终使用模拟模式（当Python TCP服务器使用自定义服务器时禁用）
     private static bool alwaysUseSimulation = false;
-    
-    // Simulated response handling
+    // 模拟响应相关方法
+    /// <summary>
+    /// 检查是否存在指定消息ID的模拟响应
+    /// </summary>
+    /// <param name="messageId">消息ID</param>
+    /// <returns>是否存在模拟响应</returns>
     public static bool HasSimulatedResponse(string messageId)
     {
         return simulatedResponses.ContainsKey(messageId);
     }
     
+    /// <summary>
+    /// 获取指定消息ID的模拟响应
+    /// </summary>
+    /// <param name="messageId">消息ID</param>
+    /// <returns>模拟响应内容，如果不存在则返回null</returns>
     public static string GetSimulatedResponse(string messageId)
     {
         if (simulatedResponses.TryGetValue(messageId, out string response))
@@ -48,6 +67,10 @@ public static partial class UnityMCPBridge
         return null;
     }
     
+    /// <summary>
+    /// 移除指定消息ID的模拟响应
+    /// </summary>
+    /// <param name="messageId">要移除的消息ID</param>
     public static void RemoveSimulatedResponse(string messageId)
     {
         if (simulatedResponses.ContainsKey(messageId))
@@ -56,7 +79,11 @@ public static partial class UnityMCPBridge
         }
     }
 
-    // Add method to check existence of a folder
+    /// <summary>
+    /// 检查指定路径的文件夹是否存在
+    /// </summary>
+    /// <param name="path">要检查的路径</param>
+    /// <returns>文件夹是否存在</returns>
     public static bool FolderExists(string path)
     {
         if (string.IsNullOrEmpty(path))
@@ -69,23 +96,35 @@ public static partial class UnityMCPBridge
         return Directory.Exists(fullPath);
     }
 
+    /// <summary>
+    /// 静态构造函数
+    /// 在Unity编辑器加载时自动调用，初始化服务器并注册退出事件
+    /// </summary>
     static UnityMCPBridge()
     {
-        Start();
+        // Start();
         EditorApplication.quitting += Stop;
     }
 
+    /// <summary>
+    /// 启动TCP服务器
+    /// 初始化监听器并开始接受连接
+    /// </summary>
     public static void Start()
     {
         if (isRunning) return;
         isRunning = true;
         listener = new TcpListener(IPAddress.Loopback, unityPort);
         listener.Start();
-        Debug.Log($"UnityMCPBridge started on port {unityPort}.");
+        Debug.Log($"UnityMCPBridge已启动，监听端口：{unityPort}");
         Task.Run(ListenerLoop);
         EditorApplication.update += ProcessCommands;
     }
 
+    /// <summary>
+    /// 停止TCP服务器
+    /// 清理资源并停止监听
+    /// </summary>
     public static void Stop()
     {
         if (!isRunning) return;
@@ -96,12 +135,16 @@ public static partial class UnityMCPBridge
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"Error stopping listener: {ex.Message}");
+            Debug.LogWarning($"停止监听器时出错：{ex.Message}");
         }
         EditorApplication.update -= ProcessCommands;
-        Debug.Log("UnityMCPBridge stopped.");
+        Debug.Log("UnityMCPBridge已停止");
     }
 
+    /// <summary>
+    /// 监听循环
+    /// 持续监听并接受新的客户端连接
+    /// </summary>
     private static async Task ListenerLoop()
     {
         while (isRunning)
@@ -109,22 +152,27 @@ public static partial class UnityMCPBridge
             try
             {
                 var client = await listener.AcceptTcpClientAsync();
-                // Enable basic socket keepalive
+                // 启用基本的socket保活机制
                 client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
-                // Set longer receive timeout to prevent quick disconnections
-                client.ReceiveTimeout = 60000; // 60 seconds
+                // 设置较长的接收超时以防止快速断开
+                client.ReceiveTimeout = 60000; // 60秒
 
-                // Fire and forget each client connection
+                // 异步处理每个客户端连接
                 _ = HandleClientAsync(client);
             }
             catch (Exception ex)
             {
-                if (isRunning) Debug.LogError($"Listener error: {ex.Message}");
+                if (isRunning) Debug.LogError($"监听器错误: {ex.Message}");
             }
         }
     }
 
+    /// <summary>
+    /// 处理客户端连接
+    /// 接收和处理来自客户端的命令
+    /// </summary>
+    /// <param name="client">TCP客户端连接</param>
     private static async Task HandleClientAsync(TcpClient client)
     {
         using (client)
@@ -136,16 +184,16 @@ public static partial class UnityMCPBridge
                 try
                 {
                     int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                    if (bytesRead == 0) break; // Client disconnected
+                    if (bytesRead == 0) break; // 客户端断开连接
 
                     string commandText = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
                     string commandId = Guid.NewGuid().ToString();
                     var tcs = new TaskCompletionSource<string>();
 
-                    // Special handling for ping command to avoid JSON parsing
+                    // 特殊处理ping命令，避免JSON解析
                     if (commandText.Trim() == "ping")
                     {
-                        // Direct response to ping without going through JSON parsing
+                        // 直接响应ping而不进行JSON解析
                         byte[] pingResponseBytes = System.Text.Encoding.UTF8.GetBytes("{\"status\":\"success\",\"result\":{\"message\":\"pong\"}}");
                         await stream.WriteAsync(pingResponseBytes, 0, pingResponseBytes.Length);
                         continue;
@@ -162,16 +210,20 @@ public static partial class UnityMCPBridge
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"Client handler error: {ex.Message}");
+                    Debug.LogError($"客户端处理错误: {ex.Message}");
                     break;
                 }
             }
         }
     }
 
+    /// <summary>
+    /// 处理命令队列
+    /// 在Unity编辑器更新循环中执行排队的命令
+    /// </summary>
     private static void ProcessCommands()
     {
-        List<string> processedIds = new();
+        List<string> processedIds = new List<string>();
         lock (lockObj)
         {
             foreach (var kvp in commandQueue.ToList())
@@ -182,23 +234,23 @@ public static partial class UnityMCPBridge
 
                 try
                 {
-                    // Special case handling
+                    // 特殊情况处理
                     if (string.IsNullOrEmpty(commandText))
                     {
                         var emptyResponse = new
                         {
                             status = "error",
-                            error = "Empty command received"
+                            error = "收到空命令"
                         };
                         tcs.SetResult(JsonConvert.SerializeObject(emptyResponse));
                         processedIds.Add(id);
                         continue;
                     }
 
-                    // Trim the command text to remove any whitespace
+                    // 去除命令文本的空白字符
                     commandText = commandText.Trim();
 
-                    // Non-JSON direct commands handling (like ping)
+                    // 处理非JSON直接命令（如ping）
                     if (commandText == "ping")
                     {
                         var pingResponse = new
@@ -211,13 +263,13 @@ public static partial class UnityMCPBridge
                         continue;
                     }
 
-                    // Check if the command is valid JSON before attempting to deserialize
+                    // 在尝试反序列化之前检查命令是否为有效的JSON
                     if (!IsValidJson(commandText))
                     {
                         var invalidJsonResponse = new
                         {
                             status = "error",
-                            error = "Invalid JSON format",
+                            error = "无效的JSON格式",
                             receivedText = commandText.Length > 50 ? commandText.Substring(0, 50) + "..." : commandText
                         };
                         tcs.SetResult(JsonConvert.SerializeObject(invalidJsonResponse));
@@ -225,15 +277,15 @@ public static partial class UnityMCPBridge
                         continue;
                     }
 
-                    // Normal JSON command processing
+                    // 正常的JSON命令处理
                     var command = JsonConvert.DeserializeObject<JObject>(commandText);
                     if (command == null)
                     {
                         var nullCommandResponse = new
                         {
                             status = "error",
-                            error = "Command deserialized to null",
-                            details = "The command was valid JSON but could not be deserialized to a Command object"
+                            error = "命令反序列化为空",
+                            details = "该命令是有效的JSON但无法反序列化为Command对象"
                         };
                         tcs.SetResult(JsonConvert.SerializeObject(nullCommandResponse));
                     }
@@ -245,13 +297,13 @@ public static partial class UnityMCPBridge
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"Error processing command: {ex.Message}\n{ex.StackTrace}");
+                    Debug.LogError($"处理命令时出错: {ex.Message}\n{ex.StackTrace}");
 
                     var response = new
                     {
                         status = "error",
                         error = ex.Message,
-                        commandType = "Unknown (error during processing)",
+                        commandType = "未知（处理过程中出错）",
                         receivedText = commandText?.Length > 50 ? commandText.Substring(0, 50) + "..." : commandText
                     };
                     string responseJson = JsonConvert.SerializeObject(response);
@@ -268,15 +320,19 @@ public static partial class UnityMCPBridge
         }
     }
 
-    // Helper method to check if a string is valid JSON
+    /// <summary>
+    /// 检查字符串是否为有效的JSON
+    /// </summary>
+    /// <param name="text">要检查的文本</param>
+    /// <returns>是否为有效的JSON</returns>
     private static bool IsValidJson(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
         text = text.Trim();
-        if ((text.StartsWith("{") && text.EndsWith("}")) || // Object
-            (text.StartsWith("[") && text.EndsWith("]")))   // Array
+        if ((text.StartsWith("{") && text.EndsWith("}")) || // 对象
+            (text.StartsWith("[") && text.EndsWith("]")))   // 数组
         {
             try
             {
@@ -292,7 +348,11 @@ public static partial class UnityMCPBridge
         return false;
     }
     
-    // Improved method to check Python server connection status and avoid repeated log messages
+    /// <summary>
+    /// 检查Python服务器连接状态
+    /// 尝试连接并发送ping消息来验证连接是否有效
+    /// </summary>
+    /// <returns>连接是否成功</returns>
     public static async Task<bool> CheckPythonServerConnection()
     {
         bool isConnected = false;
@@ -300,56 +360,61 @@ public static partial class UnityMCPBridge
         {
             using (var client = new TcpClient())
             {
-                // Try to connect with a short timeout
+                // Debugger.Log("检查Python服务器连接...");
+                // 尝试连接（带短超时）
                 var connectTask = client.ConnectAsync("localhost", unityPort);
                 if (await Task.WhenAny(connectTask, Task.Delay(1000)) == connectTask)
                 {
-                    // Try to send a ping message to verify connection is alive
+                    // 尝试发送ping消息验证连接是否活跃
                     try
                     {
+                        if (client.Connected == false)
+                        {
+                            client.Connect("localhost", unityPort);
+                        }
                         NetworkStream stream = client.GetStream();
                         byte[] pingMessage = System.Text.Encoding.UTF8.GetBytes("ping");
                         await stream.WriteAsync(pingMessage, 0, pingMessage.Length);
 
-                        // Wait for response with timeout
+                        // 等待响应（带超时）
                         byte[] buffer = new byte[1024];
                         var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
                         if (await Task.WhenAny(readTask, Task.Delay(1000)) == readTask)
                         {
                             isConnected = true;
-                            // Only log if connection state changed
+                            // 仅在连接状态改变时记录
                             if (isConnected != lastConnectionState)
                             {
-                                Debug.Log($"Python server connected successfully on port {unityPort}");
+                                Debug.Log($"Python服务器连接成功，端口：{unityPort}");
                                 lastConnectionState = isConnected;
                             }
                         }
                         else
                         {
-                            // Only log if connection state changed
+                            // 仅在连接状态改变时记录
                             if (isConnected != lastConnectionState)
                             {
-                                Debug.LogWarning($"Python server not responding on port {unityPort}");
+                                Debug.LogWarning($"Python服务器未响应，端口：{unityPort}");
                                 lastConnectionState = isConnected;
                             }
                         }
                     }
-                    catch (Exception)
+                    catch (Exception e)
                     {
-                        // Only log if connection state changed
+                        // 仅在连接状态改变时记录
                         if (isConnected != lastConnectionState)
                         {
-                            Debug.LogWarning("Communication error with Python server");
                             lastConnectionState = isConnected;
                         }
+                        Debug.LogError("与Python服务器通信出错" + e.Message);
                     }
                 }
                 else
                 {
-                    // Only log if connection state changed
+                    // 仅在连接状态改变时记录
                     if (isConnected != lastConnectionState)
                     {
-                        Debug.LogWarning($"Python server is not running or not accessible on port {unityPort}");
+                        Debug.LogWarning($"Python服务器未运行或无法访问，端口：{unityPort}");
                         lastConnectionState = isConnected;
                     }
                 }
@@ -357,10 +422,10 @@ public static partial class UnityMCPBridge
         }
         catch (Exception)
         {
-            // Only log if connection state changed
+            // 仅在连接状态改变时记录
             if (isConnected != lastConnectionState)
             {
-                Debug.LogError("Connection error when checking Python server status");
+                Debug.LogError("检查Python服务器状态时发生连接错误");
                 lastConnectionState = isConnected;
             }
         }
@@ -371,8 +436,10 @@ public static partial class UnityMCPBridge
     // Helper method to forward a command to the Python MCP TCP server
     private static async Task<string> ForwardToMCPServer(string commandType, JObject parameters)
     {
-        // これが追加されるmessageId変数
         string messageId = null;
+        int maxRetries = 3;
+        int currentRetry = 0;
+        int retryDelayMs = 1000; // 1秒延迟
         
         try
         {
@@ -384,69 +451,104 @@ public static partial class UnityMCPBridge
             
             string commandJson = JsonConvert.SerializeObject(command);
             
-            // Extract message ID if present for simulated responses
             if (parameters != null && parameters["messageId"] != null)
             {
                 messageId = parameters["messageId"].ToString();
             }
             else
             {
-                // Generate a random ID if none provided
                 messageId = Guid.NewGuid().ToString();
             }
-            
-            // TCP接続でPythonサーバーと通信
-            using (var client = new TcpClient())
-            {
-                // Try to connect to MCP server with timeout
-                var connectionTask = client.ConnectAsync("localhost", mcpPort);
-                if (await Task.WhenAny(connectionTask, Task.Delay(3000)) != connectionTask)
-                {
-                    throw new TimeoutException("Connection to MCP server timed out");
-                }
 
-                // 接続成功の場合のみこのコードが実行される
-                using (var stream = client.GetStream())
+            while (currentRetry < maxRetries)
+            {
+                try
                 {
-                    // Send the command
-                    byte[] commandBytes = System.Text.Encoding.UTF8.GetBytes(commandJson);
-                    await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
-                    
-                    // Read response with timeout
-                    byte[] buffer = new byte[32768]; // Large buffer
-                    var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-                    if (await Task.WhenAny(readTask, Task.Delay(30000)) != readTask)
+                    using (var client = new TcpClient())
                     {
-                        throw new TimeoutException("Timeout waiting for MCP server response");
+                        Debug.Log($"尝试连接到MCP服务器 (localhost:{mcpPort}) - 第 {currentRetry + 1} 次尝试");
+                        
+                        var connectTask = client.ConnectAsync("localhost", mcpPort);
+                        if (await Task.WhenAny(connectTask, Task.Delay(3000)) != connectTask)
+                        {
+                            throw new TimeoutException($"连接MCP服务器超时 (端口 {mcpPort})");
+                        }
+                        
+                        if (client.Connected == false)
+                        {
+                            client.Connect("localhost", mcpPort);
+                        }
+                        // await connectTask;
+                        
+                        if (!client.Connected)
+                        {
+                            throw new SocketException((int)SocketError.NotConnected);
+                        }
+
+                        Debug.Log($"成功连接到MCP服务器 (localhost:{mcpPort})");
+                        
+                        using (var stream = client.GetStream())
+                        {
+                            client.ReceiveTimeout = 30000;
+                            client.SendTimeout = 30000;
+                            
+                            Debug.Log($"正在发送命令: {commandType}");
+                            byte[] commandBytes = System.Text.Encoding.UTF8.GetBytes(commandJson);
+                            await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
+                            
+                            byte[] buffer = new byte[32768];
+                            var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
+                            if (await Task.WhenAny(readTask, Task.Delay(30000)) != readTask)
+                            {
+                                throw new TimeoutException("等待MCP服务器响应超时");
+                            }
+                            
+                            int bytesRead = await readTask;
+                            string response = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                            
+                            if (!string.IsNullOrEmpty(messageId))
+                            {
+                                simulatedResponses[messageId] = response;
+                            }
+                            
+                            return response;
+                        }
                     }
-                    
-                    int bytesRead = await readTask;
-                    string response = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    
-                    // Store the response for later retrieval by the UI
-                    if (!string.IsNullOrEmpty(messageId))
+                }
+                catch (Exception ex) when (ex is SocketException || ex is TimeoutException)
+                {
+                    currentRetry++;
+                    if (currentRetry < maxRetries)
                     {
-                        simulatedResponses[messageId] = response;
+                        Debug.LogWarning($"连接失败 ({ex.Message}) - 将在 {retryDelayMs/1000} 秒后重试...");
+                        await Task.Delay(retryDelayMs);
                     }
-                    
-                    return response;
+                    else
+                    {
+                        Debug.LogError($"在 {maxRetries} 次尝试后仍无法连接到MCP服务器");
+                        Debug.LogError("请检查:");
+                        Debug.LogError("1. Python TCP服务器是否正在运行 (python tcp_server.py)");
+                        Debug.LogError($"2. 端口 {mcpPort} 是否可用且未被其他程序占用");
+                        Debug.LogError("3. 防火墙设置是否允许本地连接");
+                        Debug.LogError("4. Python服务器的日志输出是否有错误信息");
+                        throw;
+                    }
                 }
             }
+            
+            throw new Exception($"无法在 {maxRetries} 次尝试后建立连接");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error forwarding command to MCP server: {ex.Message}");
+            Debug.LogError($"转发命令到MCP服务器时出错: {ex.Message}");
             
-            // TCP接続に失敗した場合のみシミュレーションモードで応答を返す
             if (alwaysUseSimulation || ex is SocketException || ex is TimeoutException)
             {
-                Debug.LogWarning("Falling back to simulation mode due to connection error");
+                Debug.LogWarning("由于连接错误切换到模拟模式");
                 
                 if (commandType == "process_user_request")
                 {
-                    string prompt = parameters?["prompt"]?.ToString() ?? "No prompt provided";
-                    
-                    Debug.Log($"Simulating response for chat prompt: {prompt}");
+                    string prompt = parameters?["prompt"]?.ToString() ?? "未提供提示";
                     
                     var simulatedResponse = new
                     {
@@ -454,8 +556,8 @@ public static partial class UnityMCPBridge
                         result = new
                         {
                             status = "error",
-                            message = $"Connection error: {ex.Message}",
-                            llm_response = $"TCP接続エラーが発生しました：{ex.Message}\n\nPythonのTCPサーバーが起動していることを確認してください。\n\ntcp_server.pyを起動するには以下のコマンドを実行してください：\npython tcp_server.py",
+                            message = $"连接错误: {ex.Message}",
+                            llm_response = $"TCP连接错误：{ex.Message}\n\n请确保：\n1. Python TCP服务器正在运行\n2. 端口 {mcpPort} 未被占用\n3. 防火墙允许本地连接\n\n要启动服务器，请运行：\npython tcp_server.py",
                             commands_executed = 0,
                             results = new object[] { }
                         }
@@ -472,15 +574,14 @@ public static partial class UnityMCPBridge
                 }
                 else
                 {
-                    // その他のコマンドの場合のエラー応答
                     var errorResponse = new
                     {
                         status = "error",
                         result = new
                         {
                             status = "error",
-                            message = $"Failed to communicate with MCP server: {ex.Message}",
-                            details = "Please make sure the Python TCP server is running (python tcp_server.py)"
+                            message = $"与MCP服务器通信失败: {ex.Message}",
+                            details = $"请确保Python TCP服务器正在运行且端口 {mcpPort} 可用"
                         }
                     };
                     
@@ -489,15 +590,14 @@ public static partial class UnityMCPBridge
             }
             else
             {
-                // その他のエラーの場合は通常のエラーレスポンスを返す
                 var errorResponse = new
                 {
                     status = "error",
                     result = new
                     {
                         status = "error",
-                        message = $"Failed to process command: {ex.Message}",
-                        llm_response = "Sorry, there was an error processing your request."
+                        message = $"处理命令失败: {ex.Message}",
+                        llm_response = "抱歉，处理您的请求时出现错误。"
                     }
                 };
                 
@@ -528,7 +628,7 @@ public static partial class UnityMCPBridge
                 
                 Debug.Log($"Executing Unity command: {function}");
                 
-                // ここでUnityコマンドを実行
+                // 在此执行Unity命令
                 switch (function.ToLower())
                 {
                     case "create_object":
@@ -549,25 +649,25 @@ public static partial class UnityMCPBridge
                         EditorAction(arguments?["action"]?.ToString());
                         break;
                         
-                    // 追加：find_objects_by_name コマンドの実装
+                    // 追加：find_objects_by_name 命令的实现
                     case "find_objects_by_name":
-                        // パラメータが存在しない場合でもエラーを出さずに空文字列として処理
+                        // 即使参数不存在，也不报错，而是作为空字符串处理
                         string searchName = arguments?["name"]?.ToString() ?? "";
                         FindObjectsByName(searchName);
                         break;
                         
-                    // 追加：transform コマンドの実装
+                    // 追加：transform 命令的实现
                     case "transform":
                         TransformObject(arguments);
                         break;
                         
-                    // 新規実装：get_object_properties コマンドの実装
+                    // 新实现：get_object_properties 命令的实现
                     case "get_object_properties":
                         string objName = arguments?["name"]?.ToString() ?? "";
                         GetObjectProperties(objName);
                         break;
                         
-                    // 新規実装：scene コマンドの実装
+                    // 新实现：scene 命令的实现
                     case "scene":
                         string sceneAction = arguments?["action"]?.ToString() ?? "info";
                         HandleSceneCommand(sceneAction, arguments);
@@ -601,14 +701,14 @@ public static partial class UnityMCPBridge
             return;
         }
         
-        // オブジェクトの基本情報を取得
+        // 获取对象的基本信息
         Debug.Log($"Object Properties for '{objectName}':");
         Debug.Log($"- Position: {obj.transform.position}");
         Debug.Log($"- Rotation: {obj.transform.eulerAngles}");
         Debug.Log($"- Scale: {obj.transform.localScale}");
         Debug.Log($"- Active: {obj.activeSelf}");
         
-        // コンポーネント情報
+        // 组件信息
         Component[] components = obj.GetComponents<Component>();
         Debug.Log($"- Components ({components.Length}):");
         foreach (Component component in components)
@@ -619,7 +719,7 @@ public static partial class UnityMCPBridge
             }
         }
         
-        // 子オブジェクト
+        // 子对象
         int childCount = obj.transform.childCount;
         Debug.Log($"- Child Objects ({childCount}):");
         for (int i = 0; i < childCount; i++)
@@ -629,7 +729,7 @@ public static partial class UnityMCPBridge
         }
     }
     
-    // 新規実装：scene コマンド
+    // 新实现：scene 命令
     private static void HandleSceneCommand(string action, JObject arguments)
     {
         switch (action.ToLower())
@@ -660,12 +760,12 @@ public static partial class UnityMCPBridge
                 
             default:
                 Debug.LogWarning($"Unknown scene action: {action}");
-                GetSceneInfo(); // デフォルトで情報表示
+                GetSceneInfo(); // 默认显示信息
                 break;
         }
     }
     
-    // シーン情報を取得
+    // 获取场景信息
     private static void GetSceneInfo()
     {
         Scene activeScene = SceneManager.GetActiveScene();
@@ -676,7 +776,7 @@ public static partial class UnityMCPBridge
         Debug.Log($"- Is Loaded: {activeScene.isLoaded}");
         Debug.Log($"- Root Objects Count: {activeScene.rootCount}");
         
-        // シーン内のルートオブジェクトを表示
+        // 显示场景内的根对象
         GameObject[] rootObjects = activeScene.GetRootGameObjects();
         Debug.Log($"Root Objects ({rootObjects.Length}):");
         foreach (GameObject obj in rootObjects)
@@ -684,7 +784,7 @@ public static partial class UnityMCPBridge
             Debug.Log($"- {obj.name}");
         }
         
-        // 全シーンのリストを表示
+        // 显示所有场景的列表
         int sceneCount = SceneManager.sceneCount;
         Debug.Log($"Total Scenes Loaded: {sceneCount}");
         for (int i = 0; i < sceneCount; i++)
@@ -694,7 +794,7 @@ public static partial class UnityMCPBridge
         }
     }
     
-    // 新しいシーンを作成
+    // 创建新场景
     private static void CreateNewScene(string name)
     {
         if (EditorApplication.isPlaying)
@@ -703,7 +803,7 @@ public static partial class UnityMCPBridge
             return;
         }
         
-        // 現在のシーンが保存されていない変更を持っているか確認
+        // 检查当前场景是否有未保存的更改
         if (EditorSceneManager.GetActiveScene().isDirty)
         {
             bool save = EditorUtility.DisplayDialog(
@@ -719,10 +819,10 @@ public static partial class UnityMCPBridge
             }
         }
         
-        // 新しいシーンを作成
+        // 创建新场景
         EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
         
-        // シーンを名前を付けて保存
+        // 保存场景并命名
         string scenePath = $"Assets/{name}.unity";
         bool saved = EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), scenePath);
         
@@ -736,7 +836,7 @@ public static partial class UnityMCPBridge
         }
     }
     
-    // シーンをロード
+    // 加载场景
     private static void LoadScene(string name)
     {
         if (EditorApplication.isPlaying)
@@ -745,7 +845,7 @@ public static partial class UnityMCPBridge
             return;
         }
         
-        // 現在のシーンが保存されていない変更を持っているか確認
+        // 检查当前场景是否有未保存的更改
         if (EditorSceneManager.GetActiveScene().isDirty)
         {
             bool save = EditorUtility.DisplayDialog(
@@ -761,7 +861,7 @@ public static partial class UnityMCPBridge
             }
         }
         
-        // シーンをロード
+        // 加载场景
         string scenePath = $"Assets/{name}.unity";
         if (File.Exists(scenePath))
         {
@@ -774,14 +874,14 @@ public static partial class UnityMCPBridge
         }
     }
     
-    // 追加：FindObjectsByName の実装 - エラー処理を改善
+    // 追加：FindObjectsByName 的实现 - 改进错误处理
     private static void FindObjectsByName(string objectName)
     {
-        // オブジェクト名が空の場合でもエラーを出さずに警告を表示
+        // 即使对象名为空，也不报错，而是显示警告
         if (string.IsNullOrEmpty(objectName))
         {
             Debug.LogWarning("No name provided for find_objects_by_name, searching for all objects");
-            // 空の場合は全オブジェクトをリスト表示
+            // 如果为空，则列出所有对象
             GameObject[] allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
             if (allObjects.Length == 0)
             {
@@ -819,10 +919,10 @@ public static partial class UnityMCPBridge
         }
     }
     
-    // 追加：TransformObject の実装 - エラー処理を改善
+    // 追加：TransformObject 的实现 - 改进错误处理
     private static void TransformObject(JObject arguments)
     {
-        // 引数がnullの場合の対策
+        // 处理参数为 null 的情况
         if (arguments == null)
         {
             Debug.LogWarning("No arguments provided for transform command");
@@ -847,25 +947,25 @@ public static partial class UnityMCPBridge
         Vector3? rotation = null;
         Vector3? scale = null;
         
-        // 位置情報があれば変換
+        // 如果有位置信息则进行转换
         if (arguments["position"] is JArray posArray && posArray.Count >= 3)
         {
             position = ObjectCommands.ParseVector3(posArray);
         }
         
-        // 回転情報があれば変換
+        // 如果有旋转信息则进行转换
         if (arguments["rotation"] is JArray rotArray && rotArray.Count >= 3)
         {
             rotation = ObjectCommands.ParseVector3(rotArray);
         }
         
-        // スケール情報があれば変換
+        // 如果有缩放信息则进行转换
         if (arguments["scale"] is JArray scaleArray && scaleArray.Count >= 3)
         {
             scale = ObjectCommands.ParseVector3(scaleArray);
         }
         
-        // トランスフォームを設定
+        // 设置变换
         ObjectCommands.SetTransform(obj, position, rotation, scale);
         
         Debug.Log($"Transformed object '{name}'");
@@ -936,7 +1036,7 @@ public static partial class UnityMCPBridge
     
     private static void SetObjectTransform(JObject arguments)
     {
-        // 引数がnullの場合のエラー処理を追加
+        // 增加参数为 null 时的错误处理
         if (arguments == null)
         {
             Debug.LogWarning("No arguments provided for set_object_transform");
@@ -1107,7 +1207,7 @@ public static partial class UnityMCPBridge
                     EditorApplication.delayCall += async () => {
                         try
                         {
-                            // TCP経由でPythonサーバーにリクエストを転送
+                            // 通过TCP将请求转发到Python服务器
                             string taskResponse = await ForwardToMCPServer("process_user_request", parameters);
                             
                             // Parse the response to extract commands if any
@@ -1121,7 +1221,7 @@ public static partial class UnityMCPBridge
                                 
                                 if (commands != null && commands.Count > 0)
                                 {
-                                    // 新しいスレッドでUnityコマンドを実行
+                                    // 在新线程中执行Unity命令
                                     EditorApplication.delayCall += () => {
                                         try
                                         {
@@ -1180,7 +1280,7 @@ public static partial class UnityMCPBridge
                 try 
                 {
                     Task<string> forwardTask = ForwardToMCPServer("get_ollama_status", parameters);
-                    forwardTask.Wait(5000); // 5秒のタイムアウトを設定
+                    forwardTask.Wait(5000); 
                     
                     if (forwardTask.IsCompleted)
                     {
@@ -1195,7 +1295,7 @@ public static partial class UnityMCPBridge
                 {
                     Debug.LogWarning($"Error forwarding get_ollama_status: {ex.Message}");
                     
-                    // エラー応答を返す
+                    // 返回错误响应
                     var statusResponse = new
                     {
                         status = "error",
@@ -1216,7 +1316,7 @@ public static partial class UnityMCPBridge
                 try 
                 {
                     Task<string> forwardTask = ForwardToMCPServer("configure_ollama", parameters);
-                    forwardTask.Wait(5000); // 5秒のタイムアウトを設定
+                    forwardTask.Wait(5000); // 5秒
                     
                     if (forwardTask.IsCompleted)
                     {
@@ -1231,7 +1331,7 @@ public static partial class UnityMCPBridge
                 {
                     Debug.LogWarning($"Error forwarding configure_ollama: {ex.Message}");
                     
-                    // エラー応答を返す
+                    // 返回错误响应
                     var configResponse = new
                     {
                         status = "error",
